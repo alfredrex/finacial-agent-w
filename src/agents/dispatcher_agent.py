@@ -91,6 +91,7 @@ class DispatcherAgent(BaseAgent):
 4. 对比图: "对比图"、"柱状图"、"条形图"、"比较图"、"分布图"
 5. 表格: "表格"、"数据表"、"列表"、"明细表"
 6. 其他: "饼图"、"散点图"、"热力图"、"雷达图"、"面积图"
+7. 报告类: "深度报告"、"分析报告"、"研究报告"、"投资报告"、"投研报告" - 复杂报告默认需要可视化图表
 
 【QA参数】(仅当 output_type="qa" 时设置):
 - is_deep_qa: 是否深度问答（详细解释、多维度分析）
@@ -250,16 +251,36 @@ class DispatcherAgent(BaseAgent):
 ```
 
 【示例4】用户问: "分析茅台投资价值"
-→ Report路径，复杂公司报告，需要深度分析
+→ Report路径，复杂公司报告，需要深度分析和可视化
 ```json
 {{
-    "thought": "用户需要投资价值分析，需要数据收集、指标计算和深度分析",
+    "thought": "用户需要投资价值分析，需要数据收集、指标计算、深度分析和可视化图表",
     "needs_file_processing": false,
     "needs_memory_retrieval": false,
     "selected_agent": "DataAgent",
     "needs_data_collection": true,
     "needs_analysis": true,
     "needs_deep_analysis": true,
+    "needs_visualization": true,
+    "output_type": "report",
+    "is_deep_qa": false,
+    "report_type": "复杂",
+    "report_domain": "公司"
+}}
+```
+
+【示例4.1】用户问: "茅台深度报告"
+→ Report路径，复杂公司报告，需要深度分析和可视化
+```json
+{{
+    "thought": "用户需要深度报告，需要数据收集、指标计算、深度分析和可视化图表（趋势图、财务数据表格等）",
+    "needs_file_processing": false,
+    "needs_memory_retrieval": false,
+    "selected_agent": "DataAgent",
+    "needs_data_collection": true,
+    "needs_analysis": true,
+    "needs_deep_analysis": true,
+    "needs_visualization": true,
     "output_type": "report",
     "is_deep_qa": false,
     "report_type": "复杂",
@@ -441,19 +462,37 @@ class DispatcherAgent(BaseAgent):
             }
             
         except Exception as e:
+            # API出错时，使用基于关键词的fallback判断
+            query_lower = query.lower()
+            
+            # 可视化关键词检测
+            viz_keywords = ['k线', 'kline', '趋势图', '折线图', '走势图', '对比图', '柱状图', 
+                           '画图', '图表', '可视化', '展示图', '显示图', '蜡烛图', '股价图',
+                           '行情图', '饼图', '散点图', '热力图', '雷达图']
+            needs_viz = any(kw in query_lower for kw in viz_keywords)
+            
+            # 数据收集关键词检测
+            data_keywords = ['股价', '价格', '行情', '财务', '利润', '营收', '股东', '市值',
+                            '市盈率', 'pe', 'pb', 'roe', '报告', '分析', '走势']
+            needs_data = any(kw in query_lower for kw in data_keywords) or needs_viz
+            
+            # 报告关键词检测
+            report_keywords = ['报告', '研究', '分析', '深度']
+            is_report = any(kw in query_lower for kw in report_keywords)
+            
             return {
-                "thought": f"调度分析出错: {str(e)}",
+                "thought": f"调度分析出错(使用关键词fallback): {str(e)}",
                 "needs_file_processing": False,
                 "needs_memory_retrieval": False,
-                "selected_agent": "QAAgent",
-                "needs_data_collection": False,
-                "needs_analysis": False,
-                "needs_deep_analysis": False,
-                "needs_visualization": False,
-                "output_type": "qa",
+                "selected_agent": "DataAgent" if needs_data else "QAAgent",
+                "needs_data_collection": needs_data,
+                "needs_analysis": needs_data,
+                "needs_deep_analysis": is_report,
+                "needs_visualization": needs_viz,
+                "output_type": "report" if is_report else "qa",
                 "is_deep_qa": False,
-                "report_type": None,
-                "report_domain": None,
+                "report_type": "复杂" if is_report else None,
+                "report_domain": "公司" if is_report else None,
                 "error": str(e)
             }
     

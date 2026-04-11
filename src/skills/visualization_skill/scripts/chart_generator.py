@@ -1,10 +1,29 @@
+#!/usr/bin/env python3
+"""
+图表生成模块
+使用 matplotlib 和 mplfinance 生成各类金融图表
+"""
+
 import os
+import matplotlib
+matplotlib.use('Agg')  # 使用非交互式后端，避免GUI问题
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
-import mplfinance as mpf
-import pandas as pd
 import numpy as np
+
+# 设置环境变量避免OpenMP警告
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+# 尝试导入mplfinance，如果失败则使用备用方案
+try:
+    import mplfinance as mpf
+    HAS_MPLFINANCE = True
+except ImportError:
+    HAS_MPLFINANCE = False
+    print("[WARNING] mplfinance未安装，K线图功能将受限")
+
+import pandas as pd
 
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
@@ -101,13 +120,17 @@ def generate_trend_chart(data: dict) -> str:
         图片路径
     """
     ensure_output_dir()
+    print(f"[DEBUG] generate_trend_chart 接收到的data: {data}")
     
     dates = data.get('dates', [])
     values = data.get('values', [])
     title = data.get('title', '趋势图')
     ylabel = data.get('ylabel', '值')
     
+    print(f"[DEBUG] dates: {dates}, values: {values}, title: {title}")
+    
     if not dates or not values:
+        print(f"[DEBUG] 数据为空，生成占位图")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         placeholder_path = os.path.join(OUTPUT_DIR, f"trend_{timestamp}_placeholder.png")
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -120,18 +143,24 @@ def generate_trend_chart(data: dict) -> str:
         plt.tight_layout()
         plt.savefig(placeholder_path, dpi=100, bbox_inches='tight')
         plt.close()
+        print(f"[DEBUG] 占位图已保存: {placeholder_path}")
         return placeholder_path
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = os.path.join(OUTPUT_DIR, f"trend_{timestamp}.png")
+    print(f"[DEBUG] 准备生成图片: {output_path}")
     
     fig, ax = plt.subplots(figsize=(10, 5))
     
     x = range(len(dates))
-    ax.plot(x, values, color=COLORS['primary'], linewidth=2, marker='o', markersize=4)
-    ax.fill_between(x, values, alpha=0.3, color=COLORS['primary'])
+    # 绘制标准折线图，不填充
+    ax.plot(x, values, color=COLORS['primary'], linewidth=2, marker='o', markersize=6, markerfacecolor='white', markeredgewidth=2, markeredgecolor=COLORS['primary'])
     
-    ax.set_title(title, fontsize=14, fontweight='bold')
+    # 添加数据标签
+    for i, (xi, yi) in enumerate(zip(x, values)):
+        ax.annotate(f'{yi:.1f}', (xi, yi), textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
+    
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
     ax.set_xlabel('日期', fontsize=10)
     ax.set_ylabel(ylabel, fontsize=10)
     
@@ -147,6 +176,7 @@ def generate_trend_chart(data: dict) -> str:
     plt.savefig(output_path, dpi=100, bbox_inches='tight')
     plt.close()
     
+    print(f"[DEBUG] 图片已保存: {output_path}")
     return output_path
 
 def generate_comparison_chart(data: dict) -> str:

@@ -235,13 +235,49 @@ class FinancialCLI:
                     
             elif final_state.get("answer"):
                 console.print("\n")
-                console.print(Panel(
-                    Markdown(final_state["answer"]),
-                    title="💡 回答",
-                    border_style="blue"
-                ))
+                answer_text = final_state["answer"]
+                
+                # 夣理图片显示
+                charts = final_state.get("charts", [])
+                if charts:
+                    console.print(Panel(
+                        Markdown(answer_text),
+                        title="💡 回答",
+                        border_style="blue"
+                    ))
+                    
+                    # 显示图片链接
+                    console.print("\n[bold cyan]📊 生成的图表:[/bold cyan]")
+                    for chart in charts:
+                        if isinstance(chart, dict) and "path" in chart:
+                            chart_path = chart["path"]
+                            chart_type = chart.get("type", "unknown")
+                            console.print(f"  • [{chart_type}图] {chart_path}")
+                else:
+                    console.print(Panel(
+                        Markdown(answer_text),
+                        title="💡 回答",
+                        border_style="blue"
+                    ))
             else:
                 console.print("\n[yellow]未能生成有效回答[/yellow]")
+            
+            # 显示处理数据统计
+            collected_data = final_state.get("collected_data", {})
+            if collected_data:
+                console.print("\n[bold cyan]📦 收集的数据:[/bold cyan]")
+                for key, value in collected_data.items():
+                    if isinstance(value, list):
+                        console.print(f"  • {key}: {len(value)} 条")
+                    elif isinstance(value, dict):
+                        console.print(f"  • {key}: {len(value)} 个字段")
+                    else:
+                        console.print(f"  • {key}: 已获取")
+            
+            # 显示分析结果
+            analysis_results = final_state.get("analysis_results", [])
+            if analysis_results:
+                console.print(f"\n[bold cyan]📈 分析结果: {len(analysis_results)} 项[/bold cyan]")
             
             token_usage = final_state.get("metadata", {}).get("token_usage", {})
             if token_usage and token_usage.get("total", 0) > 0:

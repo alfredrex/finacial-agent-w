@@ -191,16 +191,31 @@ Action: finish(content=K线图已生成，路径: output/charts/kline_600519_202
                     state["is_finished"] = True
                     state["observation"] = None
                     
-                    if "charts" not in state:
-                        state["charts"] = []
-                    state["charts"].append({
-                        "type": "visualization_result",
-                        "content": state["answer"]
-                    })
-                    
                     self._log_message(state, "可视化完成")
                     state["iteration_logs"].append(log_entry)
                     break
+                
+                elif tool_name == "__batch__":
+                    tools = parsed.get("tools", [])
+                    print(f"[DEBUG] 批量执行 {len(tools)} 个工具")
+                    observations = []
+                    for t in tools:
+                        t_name = t.get("tool", "")
+                        t_params = t.get("params", {})
+                        print(f"[DEBUG] 批量工具: {t_name}, 参数: {t_params}")
+                        if t_name == "generate_trend_chart":
+                            result = await self._generate_trend_chart(state, t_params)
+                        elif t_name == "generate_comparison_chart":
+                            result = await self._generate_comparison_chart(state, t_params)
+                        elif t_name == "generate_kline_chart":
+                            result = await self._generate_kline_chart(state, t_params)
+                        elif t_name == "generate_table":
+                            result = await self._generate_table(state, t_params)
+                        else:
+                            result = f"未知工具: {t_name}"
+                        observations.append(result)
+                    state["observation"] = "\n".join(observations)
+                    log_entry["observation"] = state["observation"]
                 
                 elif tool_name == "generate_kline_chart":
                     print(f"[DEBUG] 调用generate_kline_chart工具")
@@ -210,18 +225,21 @@ Action: finish(content=K线图已生成，路径: output/charts/kline_600519_202
                     log_entry["observation"] = result
                 
                 elif tool_name == "generate_trend_chart":
+                    print(f"[DEBUG] 调用generate_trend_chart工具")
                     self._log_message(state, f"生成趋势图: {params}")
                     result = await self._generate_trend_chart(state, params)
                     state["observation"] = result
                     log_entry["observation"] = result
                 
                 elif tool_name == "generate_comparison_chart":
+                    print(f"[DEBUG] 调用generate_comparison_chart工具")
                     self._log_message(state, f"生成对比图: {params}")
                     result = await self._generate_comparison_chart(state, params)
                     state["observation"] = result
                     log_entry["observation"] = result
                 
                 elif tool_name == "generate_table":
+                    print(f"[DEBUG] 调用generate_table工具")
                     self._log_message(state, f"生成表格: {params}")
                     result = await self._generate_table(state, params)
                     state["observation"] = result
@@ -352,19 +370,25 @@ Action: finish(content=K线图已生成，路径: output/charts/kline_600519_202
             return f"生成K线图失败: {str(e)}"
 
     async def _generate_trend_chart(self, state: AgentState, params: dict) -> str:
-        from src.skills.visualization_skill.scripts.chart_generator import generate_trend_chart
-        
-        data = params.get("data", {})
-        if not data:
-            data = {
-                "dates": params.get("dates", []),
-                "values": params.get("values", []),
-                "title": params.get("title", "趋势图"),
-                "ylabel": params.get("ylabel", "值")
-            }
-        
+        print(f"[DEBUG] _generate_trend_chart 开始执行，params: {params}")
         try:
+            from src.skills.visualization_skill.scripts.chart_generator import generate_trend_chart
+            
+            data = params.get("data", {})
+            print(f"[DEBUG] 提取的data参数: {data}")
+            
+            if not data:
+                data = {
+                    "dates": params.get("dates", []),
+                    "values": params.get("values", []),
+                    "title": params.get("title", "趋势图"),
+                    "ylabel": params.get("ylabel", "值")
+                }
+                print(f"[DEBUG] 构造的data: {data}")
+            
+            print(f"[DEBUG] 准备调用generate_trend_chart...")
             image_path = generate_trend_chart(data)
+            print(f"[DEBUG] generate_trend_chart返回: {image_path}")
             
             if "charts" not in state:
                 state["charts"] = []
@@ -372,9 +396,13 @@ Action: finish(content=K线图已生成，路径: output/charts/kline_600519_202
                 "type": "trend",
                 "path": image_path
             })
+            print(f"[DEBUG] charts已更新，数量: {len(state['charts'])}")
             
             return f"趋势图已生成: {image_path}"
         except Exception as e:
+            print(f"[DEBUG] 生成趋势图失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return f"生成趋势图失败: {str(e)}"
 
     async def _generate_comparison_chart(self, state: AgentState, params: dict) -> str:

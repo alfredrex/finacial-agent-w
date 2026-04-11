@@ -14,7 +14,7 @@ class DataAgent(BaseAgent):
                 ToolCategory.DATA_COMPANY
             ]
         )
-        self.max_iterations = 3
+        self.max_iterations = 15
         
         self.data_system_prompt = """你是 {name}，{description}
 

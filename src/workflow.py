@@ -444,29 +444,32 @@ def route_from_file_processing_agent(state: AgentState) -> Literal[
         return "memory_agent"
     
     need_more = state.get("need_more_agent")
-    
-    if need_more == "DataAgent":
-        if _check_agent_visit(state, "DataAgent"):
+    if need_more:
+        print(f"[DEBUG] route_from_file_processing_agent: need_more_agent={need_more}（异常流程：发现缺失）")
+        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
             return "data_agent"
-    elif need_more == "AnalysisAgent":
-        if _check_agent_visit(state, "AnalysisAgent"):
+        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
             return "analysis_agent"
-    elif need_more == "QAAgent":
-        return "qa_agent"
-    elif need_more == "ReportAgent":
-        return "report_agent"
+        elif need_more == "ReportAgent":
+            return "report_agent"
+        elif need_more == "QAAgent":
+            return "qa_agent"
     
     needs_data_collection = state.get("needs_data_collection", False)
     needs_analysis = state.get("needs_analysis", False)
     data_collection_finished = state.get("data_collection_finished", False)
     analysis_finished = state.get("analysis_finished", False)
     
+    print(f"[DEBUG] route_from_file_processing_agent: needs_data={needs_data_collection}, needs_analysis={needs_analysis}")
+    
     if needs_data_collection and not data_collection_finished:
         if _check_agent_visit(state, "DataAgent"):
+            print(f"[DEBUG] route_from_file_processing_agent: 返回 data_agent（调度参数）")
             return "data_agent"
     
     if needs_analysis and not analysis_finished:
         if _check_agent_visit(state, "AnalysisAgent"):
+            print(f"[DEBUG] route_from_file_processing_agent: 返回 analysis_agent（调度参数）")
             return "analysis_agent"
     
     output_type = state.get("output_type", "qa")
@@ -483,29 +486,32 @@ def route_from_memory_agent(state: AgentState) -> Literal[
         return "qa_agent"
     
     need_more = state.get("need_more_agent")
-    
-    if need_more == "DataAgent":
-        if _check_agent_visit(state, "DataAgent"):
+    if need_more:
+        print(f"[DEBUG] route_from_memory_agent: need_more_agent={need_more}（异常流程：发现缺失）")
+        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
             return "data_agent"
-    elif need_more == "AnalysisAgent":
-        if _check_agent_visit(state, "AnalysisAgent"):
+        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
             return "analysis_agent"
-    elif need_more == "QAAgent":
-        return "qa_agent"
-    elif need_more == "ReportAgent":
-        return "report_agent"
+        elif need_more == "ReportAgent":
+            return "report_agent"
+        elif need_more == "QAAgent":
+            return "qa_agent"
     
     needs_data_collection = state.get("needs_data_collection", False)
     needs_analysis = state.get("needs_analysis", False)
     data_collection_finished = state.get("data_collection_finished", False)
     analysis_finished = state.get("analysis_finished", False)
     
+    print(f"[DEBUG] route_from_memory_agent: needs_data={needs_data_collection}, needs_analysis={needs_analysis}")
+    
     if needs_data_collection and not data_collection_finished:
         if _check_agent_visit(state, "DataAgent"):
+            print(f"[DEBUG] route_from_memory_agent: 返回 data_agent（调度参数）")
             return "data_agent"
     
     if needs_analysis and not analysis_finished:
         if _check_agent_visit(state, "AnalysisAgent"):
+            print(f"[DEBUG] route_from_memory_agent: 返回 analysis_agent（调度参数）")
             return "analysis_agent"
     
     output_type = state.get("output_type", "qa")
@@ -525,34 +531,31 @@ def route_from_data_agent(state: AgentState) -> Literal[
         return "qa_agent"
     
     need_more = state.get("need_more_agent")
-    
-    if need_more == "DataAgent":
-        if _check_agent_visit(state, "DataAgent"):
+    if need_more:
+        print(f"[DEBUG] route_from_data_agent: need_more_agent={need_more}（异常流程：发现缺失）")
+        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
             return "data_agent"
-    elif need_more == "AnalysisAgent":
-        if _check_agent_visit(state, "AnalysisAgent"):
+        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
             return "analysis_agent"
-    elif need_more == "ReportAgent":
-        return "report_agent"
-    elif need_more == "QAAgent":
-        return "qa_agent"
+        elif need_more == "ReportAgent":
+            return "report_agent"
+        elif need_more == "QAAgent":
+            return "qa_agent"
     
     needs_analysis = state.get("needs_analysis", False)
+    needs_visualization = state.get("needs_visualization", False)
     analysis_finished = state.get("analysis_finished", False)
+    visualization_done = state.get("visualization_done", False)
+    
+    print(f"[DEBUG] route_from_data_agent: needs_analysis={needs_analysis}, needs_visualization={needs_visualization}")
     
     if needs_analysis and not analysis_finished:
         if _check_agent_visit(state, "AnalysisAgent"):
+            print(f"[DEBUG] route_from_data_agent: 返回 analysis_agent（调度参数）")
             return "analysis_agent"
     
-    needs_visualization = state.get("needs_visualization", False)
-    visualization_done = state.get("visualization_done", False)
-    data_collection_finished = state.get("data_collection_finished", False)
-    
-    print(f"[DEBUG] route_from_data_agent: needs_visualization={needs_visualization}, visualization_done={visualization_done}")
-    print(f"[DEBUG] route_from_data_agent: data_collection_finished={data_collection_finished}, needs_analysis={needs_analysis}")
-    
-    if needs_visualization and not visualization_done and data_collection_finished and not needs_analysis:
-        print(f"[DEBUG] route_from_data_agent: 返回 visualization_agent")
+    if needs_visualization and not visualization_done:
+        print(f"[DEBUG] route_from_data_agent: 返回 visualization_agent（调度参数）")
         return "visualization_agent"
     
     output_type = state.get("output_type", "qa")
@@ -572,44 +575,28 @@ def route_from_analysis_agent(state: AgentState) -> Literal[
         return "qa_agent"
     
     need_more = state.get("need_more_agent")
-    
-    if need_more == "DataAgent":
-        if _check_agent_visit(state, "DataAgent"):
+    if need_more:
+        print(f"[DEBUG] route_from_analysis_agent: need_more_agent={need_more}（异常流程：发现缺失）")
+        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
             return "data_agent"
-    elif need_more == "AnalysisAgent":
-        if _check_agent_visit(state, "AnalysisAgent"):
+        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
             return "analysis_agent"
-    elif need_more == "ReportAgent":
-        return "report_agent"
-    elif need_more == "QAAgent":
-        return "qa_agent"
-    
-    needs_data_collection = state.get("needs_data_collection", False)
-    data_collection_finished = state.get("data_collection_finished", False)
-    
-    if needs_data_collection and not data_collection_finished:
-        if _check_agent_visit(state, "DataAgent"):
-            return "data_agent"
-    
-    needs_deep_analysis = state.get("needs_deep_analysis", False)
-    deep_analysis_done = state.get("deep_analysis_done", False)
-    indicator_calculation_done = state.get("indicator_calculation_done", False)
-    analysis_finished = state.get("analysis_finished", False)
-    
-    if needs_deep_analysis and not deep_analysis_done:
-        if indicator_calculation_done and data_collection_finished and analysis_finished:
-            if _check_agent_visit(state, "AnalysisAgent"):
-                return "analysis_agent"
+        elif need_more == "ReportAgent":
+            return "report_agent"
+        elif need_more == "QAAgent":
+            return "qa_agent"
     
     needs_visualization = state.get("needs_visualization", False)
     visualization_done = state.get("visualization_done", False)
+    analysis_finished = state.get("analysis_finished", False)
+    deep_analysis_done = state.get("deep_analysis_done", False)
     
     print(f"[DEBUG] route_from_analysis_agent: needs_visualization={needs_visualization}, visualization_done={visualization_done}")
-    print(f"[DEBUG] route_from_analysis_agent: data_collection_finished={data_collection_finished}, analysis_finished={analysis_finished}")
+    print(f"[DEBUG] route_from_analysis_agent: analysis_finished={analysis_finished}, deep_analysis_done={deep_analysis_done}")
     
     if needs_visualization and not visualization_done:
-        if (data_collection_finished and analysis_finished) or deep_analysis_done:
-            print(f"[DEBUG] route_from_analysis_agent: 返回 visualization_agent")
+        if analysis_finished or deep_analysis_done:
+            print(f"[DEBUG] route_from_analysis_agent: 返回 visualization_agent（调度参数）")
             return "visualization_agent"
     
     output_type = state.get("output_type", "qa")
@@ -672,38 +659,39 @@ def route_from_qa_agent(state: AgentState) -> Literal[
         return "end"
     
     need_more = state.get("need_more_agent")
-    
-    if need_more == "DataAgent":
-        data_collection_finished = state.get("data_collection_finished", False)
-        if not data_collection_finished:
-            if _check_agent_visit(state, "DataAgent"):
-                return "data_agent"
-    elif need_more == "AnalysisAgent":
-        analysis_finished = state.get("analysis_finished", False)
-        if not analysis_finished:
-            if _check_agent_visit(state, "AnalysisAgent"):
-                return "analysis_agent"
-    elif need_more == "ReportAgent":
-        return "report_agent"
-    
-    needs_visualization = state.get("needs_visualization", False)
-    visualization_done = state.get("visualization_done", False)
-    data_collection_finished = state.get("data_collection_finished", False)
-    
-    if needs_visualization and not visualization_done and data_collection_finished:
-        return "visualization_agent"
+    if need_more:
+        print(f"[DEBUG] route_from_qa_agent: need_more_agent={need_more}（异常流程：发现缺失）")
+        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
+            return "data_agent"
+        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
+            return "analysis_agent"
+        elif need_more == "ReportAgent":
+            return "report_agent"
+        elif need_more == "VisualizationAgent":
+            return "visualization_agent"
     
     needs_data_collection = state.get("needs_data_collection", False)
     needs_analysis = state.get("needs_analysis", False)
+    needs_visualization = state.get("needs_visualization", False)
+    data_collection_finished = state.get("data_collection_finished", False)
     analysis_finished = state.get("analysis_finished", False)
+    visualization_done = state.get("visualization_done", False)
+    
+    print(f"[DEBUG] route_from_qa_agent: needs_data={needs_data_collection}, needs_analysis={needs_analysis}, needs_visualization={needs_visualization}")
     
     if needs_data_collection and not data_collection_finished:
         if _check_agent_visit(state, "DataAgent"):
+            print(f"[DEBUG] route_from_qa_agent: 返回 data_agent（调度参数）")
             return "data_agent"
     
     if needs_analysis and not analysis_finished:
         if _check_agent_visit(state, "AnalysisAgent"):
+            print(f"[DEBUG] route_from_qa_agent: 返回 analysis_agent（调度参数）")
             return "analysis_agent"
+    
+    if needs_visualization and not visualization_done:
+        print(f"[DEBUG] route_from_qa_agent: 返回 visualization_agent（调度参数）")
+        return "visualization_agent"
     
     output_type = state.get("output_type", "qa")
     if output_type == "report":
@@ -719,12 +707,11 @@ def route_from_report_agent(state: AgentState) -> Literal[
         return "end"
     
     need_more = state.get("need_more_agent")
-    
-    if need_more == "DataAgent":
-        if _check_agent_visit(state, "DataAgent"):
+    if need_more:
+        print(f"[DEBUG] route_from_report_agent: need_more_agent={need_more}（异常流程：发现缺失）")
+        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
             return "data_agent"
-    elif need_more == "AnalysisAgent":
-        if _check_agent_visit(state, "AnalysisAgent"):
+        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
             return "analysis_agent"
     
     needs_data_collection = state.get("needs_data_collection", False)
@@ -732,12 +719,16 @@ def route_from_report_agent(state: AgentState) -> Literal[
     data_collection_finished = state.get("data_collection_finished", False)
     analysis_finished = state.get("analysis_finished", False)
     
+    print(f"[DEBUG] route_from_report_agent: needs_data={needs_data_collection}, needs_analysis={needs_analysis}")
+    
     if needs_data_collection and not data_collection_finished:
         if _check_agent_visit(state, "DataAgent"):
+            print(f"[DEBUG] route_from_report_agent: 返回 data_agent（调度参数）")
             return "data_agent"
     
     if needs_analysis and not analysis_finished:
         if _check_agent_visit(state, "AnalysisAgent"):
+            print(f"[DEBUG] route_from_report_agent: 返回 analysis_agent（调度参数）")
             return "analysis_agent"
     
     return "end"

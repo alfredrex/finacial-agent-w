@@ -31,7 +31,10 @@ def _create_session() -> requests.Session:
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://finance.sina.com.cn/',
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     })
     return session
 
@@ -39,7 +42,7 @@ def _create_session() -> requests.Session:
 class EnhancedDataCollector:
     """
     增强版数据收集器
-    数据源优先级: akshare > eastmoney > sina > tencent > mock
+    数据源优先级: tushare > eastmoney > sina > tencent > akshare
     """
     
     def __init__(self):
@@ -52,6 +55,19 @@ class EnhancedDataCollector:
         self._cache_time: Dict[str, datetime] = {}
         self._cache_ttl = 300
         self._session = _create_session()
+        
+        # 初始化tushare - 从环境变量读取token
+        try:
+            from src.config import settings
+            tushare_token = settings.TUSHARE_TOKEN
+            if tushare_token:
+                import tushare as ts
+                ts.set_token(tushare_token)
+                self._tushare_pro = ts.pro_api()
+            else:
+                self._tushare_pro = None
+        except Exception:
+            self._tushare_pro = None
     
     def _is_cache_valid(self, key: str) -> bool:
         if key not in self._cache_time:
@@ -70,10 +86,15 @@ class EnhancedDataCollector:
     def _safe_akshare_call(self, func, *args, **kwargs) -> Optional[Any]:
         try:
             # 确保代理环境变量被清除
-            import os
             os.environ['NO_PROXY'] = '*'
             os.environ['HTTP_PROXY'] = ''
             os.environ['HTTPS_PROXY'] = ''
+            os.environ['http_proxy'] = ''
+            os.environ['https_proxy'] = ''
+            
+            # 重新导入requests并禁用代理
+            import requests
+            requests.sessions.Session.trust_env = False
             
             import akshare as ak
             result = func(*args, **kwargs)
@@ -93,7 +114,8 @@ class EnhancedDataCollector:
         if cached:
             return cached
         
-        result = self._eastmoney_realtime(symbol)
+        # 数据源优先级: tushare > sina > tencent > eastmoney
+        result = self._tushare_realtime(symbol)
         if result:
             self._set_cache(cache_key, result)
             return result
@@ -108,12 +130,35 @@ class EnhancedDataCollector:
             self._set_cache(cache_key, result)
             return result
         
-        result = self._safe_akshare_call(self._akshare_realtime, symbol)
+        result = self._eastmoney_realtime(symbol)
         if result:
             self._set_cache(cache_key, result)
             return result
         
         return {"symbol": symbol, "error": "所有数据源均不可用", "source": "none"}
+    
+    def _tushare_realtime(self, symbol: str) -> Optional[Dict]:
+        """Tushare实时行情"""
+        if not self._tushare_pro:
+            return None
+        try:
+            ts_code = f"{symbol}.SH" if symbol.startswith('6') else f"{symbol}.SZ"
+            df = self._tushare_pro.daily(ts_code=ts_code, start_date=datetime.now().strftime('%Y%m%d'), end_date=datetime.now().strftime('%Y%m%d'))
+            if df is not None and not df.empty:
+                row = df.iloc[0]
+                return {
+                    "symbol": symbol,
+                    "name": "",
+                    "price": float(row['close']) if pd.notna(row['close']) else 0.0,
+                    "change": float(row['change']) if pd.notna(row['change']) else 0.0,
+                    "change_percent": float(row['pct_chg']) if pd.notna(row['pct_chg']) else 0.0,
+                    "volume": float(row['vol']) if pd.notna(row['vol']) else 0.0,
+                    "source": "tushare",
+                    "timestamp": datetime.now().isoformat()
+                }
+        except Exception as e:
+            print(f"[DEBUG] tushare实时行情失败: {e}")
+        return None
     
     def _akshare_realtime(self, symbol: str) -> Optional[Dict]:
         import akshare as ak
@@ -210,12 +255,17 @@ class EnhancedDataCollector:
             if match:
                 data = match.group(1).split('~')
                 if len(data) >= 45:
+                    price = float(data[3]) if data[3] else 0
+                    pre_close = float(data[4]) if data[4] else price
+                    change = price - pre_close
+                    change_percent = (change / pre_close * 100) if pre_close else 0
+                    
                     return {
                         "symbol": symbol,
                         "name": data[1],
-                        "price": round(float(data[3]), 2) if data[3] else 0,
-                        "change": round(float(data[4]), 2) if data[4] else 0,
-                        "change_percent": round(float(data[5]), 2) if data[5] else 0,
+                        "price": round(price, 2),
+                        "change": round(change, 2),
+                        "change_percent": round(change_percent, 2),
                         "volume": float(data[6]) if data[6] else 0,
                         "source": "tencent",
                         "timestamp": datetime.now().isoformat()
@@ -230,10 +280,10 @@ class EnhancedDataCollector:
         if cached:
             return cached
         
-        # 数据源优先级: eastmoney > akshare > sina > tencent
+        # 数据源优先级: tushare > eastmoney > sina > tencent
         data_sources = [
+            ("tushare", self._tushare_history),
             ("东方财富", self._eastmoney_history),
-            ("akshare", lambda s, d: self._safe_akshare_call(self._akshare_history, s, d)),
             ("新浪财经", self._sina_history),
             ("腾讯财经", self._tencent_history),
         ]
@@ -249,9 +299,38 @@ class EnhancedDataCollector:
                 print(f"[DEBUG] {source_name}数据源失败: {str(e)}")
                 continue
         
-        # 所有数据源都失败，返回空列表而不是错误字典
+        # 所有数据源都失败，返回空列表
         print(f"[DEBUG] get_stock_history: 所有数据源均不可用，返回空列表")
         return []
+    
+    def _tushare_history(self, symbol: str, days: int) -> Optional[List[Dict]]:
+        """Tushare历史K线"""
+        if not self._tushare_pro:
+            return None
+        try:
+            ts_code = f"{symbol}.SH" if symbol.startswith('6') else f"{symbol}.SZ"
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.now() - timedelta(days=days * 2)).strftime('%Y%m%d')
+            
+            df = self._tushare_pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            
+            if df is not None and not df.empty:
+                result = []
+                for _, row in df.iterrows():
+                    result.append({
+                        "date": str(row['trade_date']),
+                        "open": float(row['open']) if pd.notna(row['open']) else 0,
+                        "high": float(row['high']) if pd.notna(row['high']) else 0,
+                        "low": float(row['low']) if pd.notna(row['low']) else 0,
+                        "close": float(row['close']) if pd.notna(row['close']) else 0,
+                        "volume": float(row['vol']) if pd.notna(row['vol']) else 0,
+                        "amount": float(row['amount']) if pd.notna(row['amount']) else 0,
+                        "source": "tushare"
+                    })
+                return result[-days:] if len(result) > days else result
+        except Exception as e:
+            print(f"[DEBUG] tushare历史K线失败: {e}")
+        return None
     
 
     def _akshare_history(self, symbol: str, days: int) -> Optional[List[Dict]]:
@@ -515,12 +594,7 @@ class EnhancedDataCollector:
         if cached:
             return cached
         
-        # 数据源优先级: akshare > eastmoney > sina > tencent
-        result = self._safe_akshare_call(self._akshare_company_info, symbol)
-        if result:
-            self._set_cache(cache_key, result)
-            return result
-        
+        # 数据源优先级: eastmoney > sina > tencent > akshare
         result = self._eastmoney_company_info(symbol)
         if result:
             self._set_cache(cache_key, result)
@@ -532,6 +606,11 @@ class EnhancedDataCollector:
             return result
         
         result = self._tencent_company_info(symbol)
+        if result:
+            self._set_cache(cache_key, result)
+            return result
+        
+        result = self._safe_akshare_call(self._akshare_company_info, symbol)
         if result:
             self._set_cache(cache_key, result)
             return result
@@ -671,27 +750,50 @@ class EnhancedDataCollector:
         if cached:
             return cached
         
-        # 方法1: akshare
-        result = self._safe_akshare_call(self._akshare_shareholders, symbol, date)
+        # 数据源优先级: tushare > eastmoney
+        result = self._tushare_shareholders(symbol, date)
         if result:
+            print(f"[DEBUG] get_top_shareholders: 从tushare获取到数据")
             self._set_cache(cache_key, result)
             return result
         
-        # 方法2: 东方财富
         result = self._eastmoney_shareholders(symbol)
         if result:
+            print(f"[DEBUG] get_top_shareholders: 从东方财富获取到数据")
             self._set_cache(cache_key, result)
             return result
         
-        # 方法3: Mock 数据（茅台股东信息）
-        mock_data = [
-            {"rank": 1, "shareholder": "中国贵州茅台酒厂(集团)有限责任公司", "shares": "678,121,195", "ratio": "54.06%", "source": "mock"},
-            {"rank": 2, "shareholder": "香港中央结算有限公司", "shares": "107,463,258", "ratio": "8.58%", "source": "mock"},
-            {"rank": 3, "shareholder": "贵州省国有资本运营有限责任公司", "shares": "56,701,800", "ratio": "4.53%", "source": "mock"},
-            {"rank": 4, "shareholder": "中央汇金资产管理有限责任公司", "shares": "18,890,000", "ratio": "1.51%", "source": "mock"},
-            {"rank": 5, "shareholder": "中国证券金融股份有限公司", "shares": "15,670,000", "ratio": "1.25%", "source": "mock"},
-        ]
-        return mock_data
+        # 所有数据源都失败，返回空列表
+        print(f"[DEBUG] get_top_shareholders: 所有数据源不可用")
+        return []
+    
+    def _tushare_shareholders(self, symbol: str, date: str) -> Optional[List[Dict]]:
+        """Tushare股东信息"""
+        if not self._tushare_pro:
+            return None
+        try:
+            ts_code = f"{symbol}.SH" if symbol.startswith('6') else f"{symbol}.SZ"
+            end_date = date
+            start_date = (datetime.strptime(date, '%Y%m%d') - timedelta(days=90)).strftime('%Y%m%d')
+            
+            df = self._tushare_pro.top10_holders(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            
+            if df is not None and not df.empty:
+                result = []
+                for i, (_, row) in enumerate(df.iterrows(), 1):
+                    result.append({
+                        "rank": i,
+                        "shareholder": str(row.get('holder_name', '')),
+                        "shares": f"{int(row.get('hold_amount', 0)):,}" if pd.notna(row.get('hold_amount')) else "0",
+                        "ratio": f"{float(row.get('hold_ratio', 0)):.2f}%" if pd.notna(row.get('hold_ratio')) else "0%",
+                        "change": str(row.get('hold_change', '')),
+                        "share_type": str(row.get('share_type', '')),
+                        "source": "tushare"
+                    })
+                return result[:10]
+        except Exception as e:
+            print(f"[DEBUG] tushare股东信息失败: {e}")
+        return None
     
     def get_financial_data(self, symbol: str, data_type: str = "profit") -> Dict:
         """
@@ -699,7 +801,7 @@ class EnhancedDataCollector:
         
         Args:
             symbol: 股票代码
-            data_type: 数据类型 - "profit"(利润), "revenue"(营收), "cashflow"(现金流), "all"(全部)
+            data_type: 数据类型 - "profit"(利润), "balance"(资产负债), "cashflow"(现金流), "indicator"(指标), "all"(全部)
         
         Returns:
             财务数据字典
@@ -709,13 +811,7 @@ class EnhancedDataCollector:
         if cached:
             return cached
         
-        # 数据源优先级: akshare > eastmoney > sina > tencent > mock
-        result = self._safe_akshare_call(self._akshare_financial, symbol, data_type)
-        if result and self._validate_financial_data(result):
-            print(f"[DEBUG] get_financial_data: 从akshare获取到数据")
-            self._set_cache(cache_key, result)
-            return result
-        
+        # 数据源优先级: eastmoney > sina > tencent > akshare
         result = self._eastmoney_financial(symbol, data_type)
         if result and self._validate_financial_data(result):
             print(f"[DEBUG] get_financial_data: 从东方财富获取到数据")
@@ -734,11 +830,15 @@ class EnhancedDataCollector:
             self._set_cache(cache_key, result)
             return result
         
-        # 所有数据源都失败，返回模拟数据
-        print(f"[DEBUG] get_financial_data: 所有数据源不可用，使用模拟数据")
-        result = self._mock_financial_data(symbol, data_type)
-        self._set_cache(cache_key, result)
-        return result
+        result = self._safe_akshare_call(self._akshare_financial, symbol, data_type)
+        if result and self._validate_financial_data(result):
+            print(f"[DEBUG] get_financial_data: 从akshare获取到数据")
+            self._set_cache(cache_key, result)
+            return result
+        
+        # 所有数据源都失败，返回错误信息
+        print(f"[DEBUG] get_financial_data: 所有数据源不可用")
+        return {"symbol": symbol, "error": "所有数据源不可用", "source": "none"}
     
     def _validate_financial_data(self, data: Dict) -> bool:
         """验证财务数据是否有效"""
@@ -793,41 +893,93 @@ class EnhancedDataCollector:
         return None
     
     def _eastmoney_financial(self, symbol: str, data_type: str) -> Optional[Dict]:
-        """东方财富财务数据"""
+        """东方财富财务数据 - 使用真实API"""
         try:
-            secid = f"1.{symbol}" if symbol.startswith('6') else f"0.{symbol}"
-            url = "https://push2his.eastmoney.com/api/qt/stock/fflow/kline/get"
-            params = {
-                "secid": secid,
-                "fields1": "f1,f2,f3,f7",
-                "fields2": "f51,f52,f53,f54,f55,f56",
-                "klt": "101",
-                "lmt": "0",
-                "ut": "fa5fd1943c7b386f172d6893dbfba10b"
-            }
-            resp = self._session.get(url, params=params, timeout=8)
-            data = resp.json()
+            secucode = f"{symbol}.SH" if symbol.startswith('6') else f"{symbol}.SZ"
             
-            if data and 'data' in data and data['data']:
-                # 解析财务数据
-                financial_data = {
-                    "symbol": symbol,
-                    "data_type": data_type,
-                    "source": "eastmoney",
-                    "timestamp": datetime.now().isoformat()
-                }
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://data.eastmoney.com/',
+            }
+            
+            financial_data = {
+                "symbol": symbol,
+                "data_type": data_type,
+                "source": "eastmoney",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # 利润表数据
+            if data_type in ["profit", "all"]:
+                url = f"https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_DMSK_FN_INCOME&columns=ALL&filter=(SECUCODE%3D%22{secucode}%22)&pageSize=12&sortColumns=REPORT_DATE&sortTypes=-1"
+                resp = self._session.get(url, timeout=10, headers=headers)
+                data = resp.json()
                 
-                # 根据data_type提取相应数据
-                if data_type in ["profit", "all"]:
-                    financial_data["profit"] = data['data'].get('profit', [])
-                if data_type in ["revenue", "all"]:
-                    financial_data["revenue"] = data['data'].get('revenue', [])
-                if data_type in ["cashflow", "all"]:
-                    financial_data["cashflow"] = data['data'].get('cashflow', [])
+                if data.get('result') and data['result'].get('data'):
+                    profit_list = []
+                    for item in data['result']['data']:
+                        profit_list.append({
+                            "date": item.get("REPORT_DATE", "")[:10],
+                            "revenue": round(item.get("TOTAL_OPERATE_INCOME", 0) / 1e8, 2),
+                            "net_profit": round(item.get("PARENT_NETPROFIT", 0) / 1e8, 2),
+                            "operate_profit": round(item.get("OPERATE_PROFIT", 0) / 1e8, 2),
+                        })
+                    financial_data["profit"] = profit_list
+            
+            # 资产负债表数据
+            if data_type in ["balance", "all"]:
+                url = f"https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_DMSK_FN_BALANCE&columns=ALL&filter=(SECUCODE%3D%22{secucode}%22)&pageSize=12&sortColumns=REPORT_DATE&sortTypes=-1"
+                resp = self._session.get(url, timeout=10, headers=headers)
+                data = resp.json()
                 
-                return financial_data
-        except Exception:
-            pass
+                if data.get('result') and data['result'].get('data'):
+                    balance_list = []
+                    for item in data['result']['data']:
+                        balance_list.append({
+                            "date": item.get("REPORT_DATE", "")[:10],
+                            "total_assets": round((item.get("TOTAL_ASSETS") or 0) / 1e8, 2),
+                            "total_liability": round((item.get("TOTAL_LIAB") or 0) / 1e8, 2),
+                            "total_equity": round((item.get("TOTAL_EQUITY") or 0) / 1e8, 2),
+                        })
+                    financial_data["balance"] = balance_list
+            
+            # 现金流量表数据
+            if data_type in ["cashflow", "all"]:
+                url = f"https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_DMSK_FN_CASHFLOW&columns=ALL&filter=(SECUCODE%3D%22{secucode}%22)&pageSize=12&sortColumns=REPORT_DATE&sortTypes=-1"
+                resp = self._session.get(url, timeout=10, headers=headers)
+                data = resp.json()
+                
+                if data.get('result') and data['result'].get('data'):
+                    cashflow_list = []
+                    for item in data['result']['data']:
+                        cashflow_list.append({
+                            "date": item.get("REPORT_DATE", "")[:10],
+                            "operate_cashflow": round((item.get("NETCASH_OPERATE") or 0) / 1e8, 2),
+                            "invest_cashflow": round((item.get("NETCASH_INVEST") or 0) / 1e8, 2),
+                            "finance_cashflow": round((item.get("NETCASH_FINANCE") or 0) / 1e8, 2),
+                        })
+                    financial_data["cashflow"] = cashflow_list
+            
+            # 主要财务指标
+            if data_type in ["indicator", "all"]:
+                url = f"https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_DMSK_FN_FINANCE&columns=ALL&filter=(SECUCODE%3D%22{secucode}%22)&pageSize=12&sortColumns=REPORT_DATE&sortTypes=-1"
+                resp = self._session.get(url, timeout=10, headers=headers)
+                data = resp.json()
+                
+                if data.get('result') and data['result'].get('data'):
+                    indicator_list = []
+                    for item in data['result']['data']:
+                        indicator_list.append({
+                            "date": item.get("REPORT_DATE", "")[:10],
+                            "roe": round(item.get("ROE", 0) or 0, 2),
+                            "gross_margin": round(item.get("GROSSPROFITMARGIN", 0) or 0, 2),
+                            "net_margin": round(item.get("NETPROFITMARGIN", 0) or 0, 2),
+                        })
+                    financial_data["indicator"] = indicator_list
+            
+            return financial_data
+        except Exception as e:
+            print(f"[DEBUG] 东方财富财务数据失败: {str(e)}")
         return None
     
     def _sina_financial(self, symbol: str, data_type: str) -> Optional[Dict]:
@@ -993,30 +1145,39 @@ class EnhancedDataCollector:
         return result if result else None
     
     def _eastmoney_shareholders(self, symbol: str) -> Optional[List[Dict]]:
+        """东方财富股东信息 - 使用真实API"""
         try:
-            secid = f"1.{symbol}" if symbol.startswith('6') else f"0.{symbol}"
-            url = "https://push2.eastmoney.com/api/qt/slist/get"
-            params = {
-                "secid": secid,
-                "fields": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10",
-                "ut": "fa5fd1943c7b386f172d6893dbfba10b"
+            sh_code = f"sh{symbol}" if symbol.startswith('6') else f"sz{symbol}"
+            url = f"https://emweb.eastmoney.com/PC_HSF10/ShareholderResearch/PageAjax?code={sh_code}"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://data.eastmoney.com/',
             }
-            resp = self._session.get(url, params=params, timeout=5)
+            
+            resp = self._session.get(url, timeout=10, headers=headers)
             data = resp.json()
             
-            if data and 'data' in data and 'diff' in data['data']:
-                result = []
-                for i, item in enumerate(data['data']['diff'][:10], 1):
+            result = []
+            
+            # 十大流通股东
+            sdltgd = data.get('sdltgd', [])
+            if sdltgd:
+                for item in sdltgd[:10]:
                     result.append({
-                        "rank": i,
-                        "shareholder": item.get('f14', ''),
-                        "shares": item.get('f15', ''),
-                        "ratio": item.get('f16', ''),
+                        "rank": item.get("HOLDER_RANK", 0),
+                        "shareholder": item.get("HOLDER_NAME", ""),
+                        "shares": f"{item.get('HOLD_NUM', 0):,}",
+                        "ratio": f"{item.get('FREE_HOLDNUM_RATIO', 0):.2f}%",
+                        "change": item.get("HOLD_NUM_CHANGE", ""),
+                        "share_type": item.get("SHARES_TYPE", ""),
+                        "holder_type": item.get("HOLDER_TYPE", ""),
                         "source": "eastmoney"
                     })
-                return result if result else None
-        except Exception:
-            pass
+            
+            return result if result else None
+        except Exception as e:
+            print(f"[DEBUG] 东方财富股东信息失败: {str(e)}")
         return None
 
 

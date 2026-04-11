@@ -16,7 +16,7 @@ class AnalysisAgent(BaseAgent):
                 ToolCategory.KNOWLEDGE
             ]
         )
-        self.max_iterations = 3
+        self.max_iterations = 10
         
         self.indicator_calculation_prompt = """你是 {name}，{description}
 
