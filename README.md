@@ -54,8 +54,7 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/your-username/jinrongagent.git
-cd jinrongagent
+git clone https://github.com/mjhxyx/FinIntel-Multi-Agent
 ```
 
 ### 2. 创建虚拟环境
