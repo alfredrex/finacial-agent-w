@@ -12,6 +12,26 @@ from src.config import settings
 from src.state import AgentState
 from src.tools.registry import ToolRegistry, ToolCategory
 
+# 通信模块 (惰性导入，避免循环依赖)
+_communication = None
+_memory_system = None
+
+
+def _get_communication():
+    global _communication
+    if _communication is None:
+        from src.communication import message_bus, blackboard
+        _communication = (message_bus, blackboard)
+    return _communication
+
+
+def _get_memory_system():
+    global _memory_system
+    if _memory_system is None:
+        from src.memory import memory_system
+        _memory_system = memory_system
+    return _memory_system
+
 
 class StateSnapshot:
     def __init__(self, state: AgentState, step: str, agent: str):
@@ -698,6 +718,60 @@ Action: get_stock_realtime(600519)
     async def process(self, state: AgentState) -> AgentState:
         pass
     
+    # ─── 通信能力 ──────────────────────────────────────
+
+    async def send_message(self, to_agent: str, msg_type: str,
+                           content: Any, thread_id: str = None) -> str:
+        """通过消息总线发送消息给另一个 Agent"""
+        message_bus, _ = _get_communication()
+        from src.communication.models import MessageType
+        try:
+            mtype = MessageType(msg_type)
+        except ValueError:
+            mtype = MessageType.QUERY
+        return message_bus.send(
+            from_agent=self.name, to_agent=to_agent,
+            type=mtype, content=content, thread_id=thread_id,
+        )
+
+    async def read_messages(self) -> List[dict]:
+        """读取所有未读消息"""
+        message_bus, _ = _get_communication()
+        msgs = message_bus.get_messages(self.name)
+        return [
+            {"from": m.from_agent, "type": m.type.value,
+             "content": m.content, "thread_id": m.thread_id,
+             "timestamp": m.timestamp.isoformat()}
+            for m in msgs
+        ]
+
+    def blackboard_read(self, namespace: str, key: str) -> Any:
+        """从黑板读取数据"""
+        _, blackboard = _get_communication()
+        return blackboard.read(namespace, key)
+
+    def blackboard_write(self, namespace: str, key: str, value: Any):
+        """写入数据到黑板"""
+        _, blackboard = _get_communication()
+        blackboard.write(namespace, key, value, updated_by=self.name)
+
+    # ─── 记忆能力 ──────────────────────────────────────
+
+    async def remember(self, query: str, answer: str = "",
+                       thought_process: str = "", state: AgentState = None):
+        """将当前交互存储到记忆系统"""
+        ms = _get_memory_system()
+        await ms.store(
+            query=query, answer=answer, thought_process=thought_process,
+            state=state,
+        )
+
+    async def recall(self, query_text: str, limit: int = 5) -> str:
+        """从记忆系统检索相关内容"""
+        ms = _get_memory_system()
+        results_dict = await ms.retrieve(query_text, limit=limit)
+        return ms.get_context_string(results_dict, top_k=limit)
+
     def __call__(self, state: AgentState) -> AgentState:
         return asyncio.run(self.process(state))
     

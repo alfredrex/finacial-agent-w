@@ -5,6 +5,8 @@ from src.agents.qa_agent import qa_agent, QAAgent
 from src.agents.report_agent import report_agent, ReportAgent
 from src.agents.file_processing_agent import file_processing_agent, FileProcessingAgent
 from src.agents.dispatcher_agent import dispatcher_agent, DispatcherAgent
+from src.agents.coordinator_agent import coordinator_agent, CoordinatorAgent
+from src.agents.memory_agent import memory_agent, MemoryAgent
 
 __all__ = [
     "BaseAgent",
@@ -14,4 +16,6 @@ __all__ = [
     "report_agent", "ReportAgent",
     "file_processing_agent", "FileProcessingAgent",
     "dispatcher_agent", "DispatcherAgent",
+    "coordinator_agent", "CoordinatorAgent",
+    "memory_agent", "MemoryAgent",
 ]

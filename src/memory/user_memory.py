@@ -129,9 +129,13 @@ class UserMemoryManager:
         从内容中提取记忆信息
         使用 LLM 提取结构化信息
         """
-        from src.llm.llm import get_llm
-        
-        llm = get_llm()
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            openai_api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_BASE_URL or None,
+            temperature=0.1,
+        )
         
         category_info = MEMORY_CATEGORIES[category]
         

@@ -12,11 +12,13 @@ from src.tools.file_processor import FileInfo
 
 
 class RAGManager:
-    def __init__(self):
+    def __init__(self, collection_name: str = "default", persist_directory: Optional[str] = None):
         self._embeddings: Optional[OpenAIEmbeddings] = None
         self._vectorstore: Optional[Chroma] = None
         self._executor = ThreadPoolExecutor(max_workers=2)
         self._initialized = False
+        self._collection_name = collection_name
+        self._persist_directory = persist_directory or settings.CHROMA_DB_PATH
     
     def _get_embeddings(self) -> OpenAIEmbeddings:
         if self._embeddings is None:
@@ -42,9 +44,9 @@ class RAGManager:
             embeddings = self._get_embeddings()
             
             self._vectorstore = Chroma(
-                persist_directory=settings.CHROMA_DB_PATH,
+                persist_directory=self._persist_directory,
                 embedding_function=embeddings,
-                collection_name=settings.CHROMA_COLLECTION_NAME
+                collection_name=self._collection_name,
             )
             
             self._initialized = True
@@ -72,14 +74,18 @@ class RAGManager:
         
         return len(documents)
     
-    def add_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] = None) -> int:
+    def add_texts(self, texts: List[str], metadatas: List[Dict[str, Any]] = None,
+                  ids: Optional[List[str]] = None) -> int:
         vectorstore = self.initialize_vectorstore()
-        
+
         if metadatas is None:
             metadatas = [{} for _ in texts]
-        
-        vectorstore.add_texts(texts, metadatas=metadatas)
-        
+
+        kwargs = {"texts": texts, "metadatas": metadatas}
+        if ids is not None:
+            kwargs["ids"] = ids
+        vectorstore.add_texts(**kwargs)
+
         return len(texts)
     
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:

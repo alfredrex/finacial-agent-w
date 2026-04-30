@@ -78,6 +78,7 @@ class DispatcherAgent(BaseAgent):
 - needs_file_processing: 是否需要文件处理（有上传文件、需要存储知识）
 - needs_memory_retrieval: 是否需要记忆检索（用户提到"之前"、"历史"、"上次"、需要上下文）
 - selected_agent: 第一个执行的 Agent
+- needs_coordination: 是否需要协调器介入（任务涉及多个Agent协作或多步复杂流程时设为true）
 - needs_data_collection: 整体任务是否需要数据收集
 - needs_analysis: 整体任务是否需要数据分析（指标计算）
 - needs_deep_analysis: 整体任务是否需要深度分析（综合分析、投资建议、风险评估等）
@@ -111,6 +112,7 @@ class DispatcherAgent(BaseAgent):
     "needs_analysis": true/false,
     "needs_deep_analysis": true/false,
     "needs_visualization": true/false,
+    "needs_coordination": true/false,
     "output_type": "qa"/"report",
     "is_deep_qa": true/false,
     "report_type": "简单"/"复杂"/null,
@@ -288,6 +290,26 @@ class DispatcherAgent(BaseAgent):
 }}
 ```
 
+【示例4.2】用户问: "全面分析白酒板块，对比茅台、五粮液、汾酒的财务数据和估值，生成深度报告"
+→ 多步复杂任务，需要多个Agent协作
+```json
+{{
+    "thought": "多股票多维度分析和对比报告，需要协调器统筹",
+    "needs_file_processing": false,
+    "needs_memory_retrieval": false,
+    "selected_agent": "CoordinatorAgent",
+    "needs_data_collection": true,
+    "needs_analysis": true,
+    "needs_deep_analysis": true,
+    "needs_visualization": true,
+    "needs_coordination": true,
+    "output_type": "report",
+    "is_deep_qa": false,
+    "report_type": "复杂",
+    "report_domain": "行业"
+}}
+```
+
 【示例5】用户问: "上次茅台分析结果怎么样？"
 → 需要记忆检索
 ```json
@@ -333,7 +355,8 @@ class DispatcherAgent(BaseAgent):
 6. QA路径: 只设置 is_deep_qa，report_type/report_domain 为 null
 7. Report路径: 只设置 report_type/report_domain，is_deep_qa 为 false
 8. 后续路由由调度系统根据完成状态决定
-9. 如果用户问题不明确，输出: NEED_USER: 问题内容"""
+9. needs_coordination 设为 true 的场景: 多股票/多标的对比分析、需多方数据+多维度分析的复杂任务
+10. 如果用户问题不明确，输出: NEED_USER: 问题内容"""
     
     def register_agent(self, name: str, description: str, capabilities: List[str]):
         self._agents[name] = {
@@ -454,6 +477,7 @@ class DispatcherAgent(BaseAgent):
                 "needs_analysis": parsed.get("needs_analysis", False),
                 "needs_deep_analysis": parsed.get("needs_deep_analysis", False),
                 "needs_visualization": parsed.get("needs_visualization", False),
+                "needs_coordination": parsed.get("needs_coordination", False),
                 "output_type": parsed.get("output_type", "qa"),
                 "is_deep_qa": parsed.get("is_deep_qa", False),
                 "report_type": parsed.get("report_type"),
@@ -480,6 +504,9 @@ class DispatcherAgent(BaseAgent):
             report_keywords = ['报告', '研究', '分析', '深度']
             is_report = any(kw in query_lower for kw in report_keywords)
             
+            # 协调触发检测：多标的或多维度复杂任务
+            needs_coordination = is_report and needs_data
+
             return {
                 "thought": f"调度分析出错(使用关键词fallback): {str(e)}",
                 "needs_file_processing": False,
@@ -489,6 +516,7 @@ class DispatcherAgent(BaseAgent):
                 "needs_analysis": needs_data,
                 "needs_deep_analysis": is_report,
                 "needs_visualization": needs_viz,
+                "needs_coordination": needs_coordination,
                 "output_type": "report" if is_report else "qa",
                 "is_deep_qa": False,
                 "report_type": "复杂" if is_report else None,
@@ -518,6 +546,7 @@ class DispatcherAgent(BaseAgent):
         state["is_deep_qa"] = False
         state["needs_file_processing"] = False
         state["file_processing_done"] = False
+        state["needs_coordination"] = False
         state["needs_memory_retrieval"] = False
         state["memory_retrieval_done"] = False
         state["memory_context"] = []
@@ -547,9 +576,10 @@ class DispatcherAgent(BaseAgent):
             state["needs_analysis"] = think_result.get("needs_analysis", False)
             state["needs_deep_analysis"] = think_result.get("needs_deep_analysis", False)
             state["needs_visualization"] = think_result.get("needs_visualization", False)
-            
+            state["needs_coordination"] = think_result.get("needs_coordination", False)
+
             print(f"[DEBUG] state['needs_visualization'] = {state['needs_visualization']}")
-            
+
             state["output_type"] = think_result.get("output_type", "qa")
             state["is_deep_qa"] = think_result.get("is_deep_qa", False)
             state["report_type"] = think_result.get("report_type")

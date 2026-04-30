@@ -1,8 +1,9 @@
 from typing import Literal
 import copy
+import asyncio
 from langgraph.graph import StateGraph, END
 
-from src.state import AgentState
+from src.state import AgentState, TaskType
 from src.agents.dispatcher_agent import dispatcher_agent
 from src.agents.base_agent import snapshot_manager
 from src.agents.data_agent import data_agent
@@ -12,12 +13,39 @@ from src.agents.report_agent import report_agent
 from src.agents.file_processing_agent import file_processing_agent
 from src.agents.memory_agent import memory_agent
 from src.agents.visualization_agent import visualization_agent
+from src.agents.coordinator_agent import coordinator_agent
 from src.tools.registry import tool_registry
 from src.tools.register_tools import register_all_tools
 from src.memory.user_memory import user_memory_manager
+from src.memory import memory_system, consolidator
+from src.communication import message_bus, agent_registry
+from src.communication.models import MessageType
 
 
 register_all_tools()
+
+# ─── Agent 注册 ──────────────────────────────────────
+_agents_registered = False
+
+
+def _register_agents():
+    global _agents_registered
+    if _agents_registered:
+        return
+    for name, desc, caps in [
+        ("dispatcher", "意图分类与调度", ["dispatch", "intent_classification"]),
+        ("DataAgent", "金融数据采集", ["data_collection", "stock_data"]),
+        ("AnalysisAgent", "技术分析与深度分析", ["analysis", "indicator_calculation"]),
+        ("VisualizationAgent", "图表生成", ["visualization", "chart"]),
+        ("QAAgent", "问答生成", ["qa", "answer_generation"]),
+        ("ReportAgent", "报告生成", ["report", "report_generation"]),
+        ("FileProcessingAgent", "文件处理", ["file_processing"]),
+        ("MemoryAgent", "记忆检索", ["memory_retrieval"]),
+        ("CoordinatorAgent", "任务协调", ["coordination", "task_decomposition"]),
+    ]:
+        agent_registry.register(name=name, description=desc, capabilities=caps)
+        message_bus.register_agent(name)
+    _agents_registered = True
 
 
 def _check_agent_visit(state: AgentState, agent_name: str, max_visits: int = 2) -> bool:
@@ -70,8 +98,9 @@ async def dispatcher_node(state: AgentState) -> dict:
             "memory_retrieval_done": False,
             "memory_context": [],
             "memory_sources": [],
+            "needs_coordination": result.get("needs_coordination", False),
         }
-    
+
     try:
         result = await dispatcher_agent.process(state)
         return {
@@ -108,12 +137,46 @@ async def dispatcher_node(state: AgentState) -> dict:
             "memory_retrieval_done": False,
             "memory_context": [],
             "memory_sources": [],
+            "needs_coordination": result.get("needs_coordination", False),
         }
     except Exception as e:
         restored = snapshot_manager.restore_last()
         if restored:
             restored["exception_info"] = {
                 "agent": "dispatcher",
+                "error": str(e),
+                "error_type": type(e).__name__
+            }
+            restored["exception_handled"] = False
+            return restored
+        raise
+
+
+async def coordinator_agent_node(state: AgentState) -> dict:
+    snapshot_manager.save(state, "before_coordinator", "workflow")
+    try:
+        result = await coordinator_agent.process(state)
+        return {
+            "answer": result.get("answer"),
+            "is_finished": result.get("is_finished", False),
+            "thought": result.get("thought"),
+            "action": result.get("action"),
+            "current_agent": result.get("current_agent"),
+            "messages": result.get("messages", []),
+            "agent_iteration": result.get("agent_iteration", 0),
+            "selected_agent": result.get("selected_agent", state.get("selected_agent")),
+            "needs_data_collection": result.get("needs_data_collection", state.get("needs_data_collection", False)),
+            "needs_analysis": result.get("needs_analysis", state.get("needs_analysis", False)),
+            "needs_visualization": result.get("needs_visualization", state.get("needs_visualization", False)),
+            "agent_visit_count": state.get("agent_visit_count", {}),
+            "exception_info": None,
+            "exception_handled": state.get("exception_handled", False),
+        }
+    except Exception as e:
+        restored = snapshot_manager.restore_last()
+        if restored:
+            restored["exception_info"] = {
+                "agent": "coordinator",
                 "error": str(e),
                 "error_type": type(e).__name__
             }
@@ -404,15 +467,19 @@ async def visualization_agent_node(state: AgentState) -> dict:
 
 
 def route_from_dispatcher(state: AgentState) -> Literal[
-    "data_agent", "analysis_agent", "qa_agent", "report_agent", 
+    "coordinator_agent", "data_agent", "analysis_agent", "qa_agent", "report_agent",
     "file_processing_agent", "memory_agent", "wait_for_user"
 ]:
     if state.get("need_user_input"):
         return "wait_for_user"
-    
+
     if state.get("exception_info") and not state.get("exception_handled"):
         return "qa_agent"
-    
+
+    needs_coordination = state.get("needs_coordination", False)
+    if needs_coordination:
+        return "coordinator_agent"
+
     if state.get("needs_file_processing") and not state.get("file_processing_done"):
         return "file_processing_agent"
     
@@ -430,51 +497,6 @@ def route_from_dispatcher(state: AgentState) -> Literal[
         return "report_agent"
     elif selected == "FileProcessingAgent":
         return "file_processing_agent"
-    
-    return "qa_agent"
-
-
-def route_from_file_processing_agent(state: AgentState) -> Literal[
-    "data_agent", "analysis_agent", "qa_agent", "report_agent", "memory_agent", "end"
-]:
-    if state.get("exception_info") and not state.get("exception_handled"):
-        return "qa_agent"
-    
-    if state.get("needs_memory_retrieval") and not state.get("memory_retrieval_done"):
-        return "memory_agent"
-    
-    need_more = state.get("need_more_agent")
-    if need_more:
-        print(f"[DEBUG] route_from_file_processing_agent: need_more_agent={need_more}（异常流程：发现缺失）")
-        if need_more == "DataAgent" and _check_agent_visit(state, "DataAgent"):
-            return "data_agent"
-        elif need_more == "AnalysisAgent" and _check_agent_visit(state, "AnalysisAgent"):
-            return "analysis_agent"
-        elif need_more == "ReportAgent":
-            return "report_agent"
-        elif need_more == "QAAgent":
-            return "qa_agent"
-    
-    needs_data_collection = state.get("needs_data_collection", False)
-    needs_analysis = state.get("needs_analysis", False)
-    data_collection_finished = state.get("data_collection_finished", False)
-    analysis_finished = state.get("analysis_finished", False)
-    
-    print(f"[DEBUG] route_from_file_processing_agent: needs_data={needs_data_collection}, needs_analysis={needs_analysis}")
-    
-    if needs_data_collection and not data_collection_finished:
-        if _check_agent_visit(state, "DataAgent"):
-            print(f"[DEBUG] route_from_file_processing_agent: 返回 data_agent（调度参数）")
-            return "data_agent"
-    
-    if needs_analysis and not analysis_finished:
-        if _check_agent_visit(state, "AnalysisAgent"):
-            print(f"[DEBUG] route_from_file_processing_agent: 返回 analysis_agent（调度参数）")
-            return "analysis_agent"
-    
-    output_type = state.get("output_type", "qa")
-    if output_type == "report":
-        return "report_agent"
     
     return "qa_agent"
 
@@ -751,6 +773,7 @@ def create_workflow() -> StateGraph:
     workflow = StateGraph(AgentState)
     
     workflow.add_node("dispatcher", dispatcher_node)
+    workflow.add_node("coordinator_agent", coordinator_agent_node)
     workflow.add_node("data_agent", data_agent_node)
     workflow.add_node("analysis_agent", analysis_agent_node)
     workflow.add_node("visualization_agent", visualization_agent_node)
@@ -766,6 +789,7 @@ def create_workflow() -> StateGraph:
         "dispatcher",
         route_from_dispatcher,
         {
+            "coordinator_agent": "coordinator_agent",
             "data_agent": "data_agent",
             "analysis_agent": "analysis_agent",
             "qa_agent": "qa_agent",
@@ -866,15 +890,20 @@ class MultiAgentSystem:
     def __init__(self):
         self.workflow = create_workflow()
         self.app = self.workflow.compile()
-    
+        _register_agents()
+        consolidator.start()
+
     async def run(self, query: str, file_paths: list = None, conversation_history: list = None) -> AgentState:
+        _register_agents()
+        consolidator.start()
         memory_summary = user_memory_manager.get_memory_summary()
-        
+
         add_result = await user_memory_manager.add_memory(query)
-        
+
         initial_state: AgentState = {
             "query": query,
             "rewritten_query": None,
+            "task_type": TaskType.QA,
             "file_paths": file_paths or [],
             "collected_data": [],
             "analysis_results": [],
@@ -926,16 +955,36 @@ class MultiAgentSystem:
             "charts": [],
             "tables": [],
             "user_memory_summary": memory_summary,
+            "needs_coordination": False,
+            "memory_state": None,
+            "communication_state": None,
+            "workflow_state": None,
         }
-        
+
         final_state = await self.app.ainvoke(initial_state)
-        
+
+        # 将交互存入长期记忆
+        try:
+            answer = final_state.get("answer", "") or final_state.get("report", "") or ""
+            await memory_system.store(
+                query=query,
+                answer=answer[:500],
+                state=dict(final_state),
+            )
+        except Exception:
+            pass
+
         return final_state
     
     async def run_stream(self, query: str, file_paths: list = None, conversation_history: list = None):
+        _register_agents()
+        consolidator.start()
+        memory_summary = user_memory_manager.get_memory_summary()
+
         initial_state: AgentState = {
             "query": query,
             "rewritten_query": None,
+            "task_type": TaskType.QA,
             "file_paths": file_paths or [],
             "collected_data": [],
             "analysis_results": [],
@@ -986,6 +1035,11 @@ class MultiAgentSystem:
             "visualization_done": False,
             "charts": [],
             "tables": [],
+            "user_memory_summary": memory_summary,
+            "needs_coordination": False,
+            "memory_state": None,
+            "communication_state": None,
+            "workflow_state": None,
         }
         
         current_state = initial_state

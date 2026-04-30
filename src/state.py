@@ -3,6 +3,33 @@ from operator import add
 from enum import Enum
 
 
+# ─── 命名空间子状态 ───
+
+class MemoryState(TypedDict, total=False):
+    """记忆相关状态"""
+    working_context: str                          # 短期记忆上下文
+    episodic_results: List[dict]                  # 长期经验记忆检索结果
+    semantic_results: List[dict]                  # 语义记忆检索结果
+    user_preferences: List[dict]                  # 用户偏好
+
+
+class CommunicationState(TypedDict, total=False):
+    """通信相关状态"""
+    unread_messages: List[dict]                   # 未读消息
+    sent_messages: List[dict]                     # 已发送消息
+    thread_ids: List[str]                         # 活跃线程ID
+    coordinator_active: bool                      # 协调器是否介入
+    delegation_plan: Optional[dict]               # 协调器分配计划
+
+
+class WorkflowState(TypedDict, total=False):
+    """工作流控制状态"""
+    parallel_tasks: List[dict]                    # 并行子任务
+    task_dependencies: dict                       # 子任务依赖
+
+
+# ─── 主状态 ───
+
 class TaskType(str, Enum):
     QA = "qa"
     REPORT = "report"
@@ -69,6 +96,10 @@ class AgentState(TypedDict):
     needs_file_processing: bool
     file_processing_done: bool
     user_memory_summary: Optional[str]
+    # ── 新增命名空间子状态 ──
+    memory_state: Optional[MemoryState]
+    communication_state: Optional[CommunicationState]
+    workflow_state: Optional[WorkflowState]
 
 
 class FileInfo(TypedDict):
