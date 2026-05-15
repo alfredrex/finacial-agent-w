@@ -45,6 +45,13 @@ output/
 reports/
 *.log
 
+# 模型文件（太大，通过脚本下载）
+models/
+
+# SQLite 临时文件
+*.db-shm
+*.db-wal
+
 # 测试和覆盖率
 .pytest_cache/
 .coverage

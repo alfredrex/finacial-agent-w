@@ -1,11 +1,11 @@
 from src.tools.registry import tool_registry, ToolCategory
 from src.tools.enhanced_data_collector import enhanced_data_collector
 from src.tools.financial_analyzer import financial_analyzer
-from src.tools.rag_manager import rag_manager
 from src.tools.file_processor import file_processor
 
 
 def register_all_tools():
+    from src.tools.rag_manager import rag_manager  # lazy import to avoid circular dependency
     tool_registry.register(
         name="get_stock_realtime",
         description="获取股票实时行情数据（价格、涨跌幅、成交量等）",
@@ -94,5 +94,12 @@ def register_all_tools():
         func=file_processor.process_file
     )
 
-
-register_all_tools()
+    # V3: 联网搜索工具 (On-Demand Fetch)
+    from src.tools.web_search_tool import on_demand_search
+    tool_registry.register(
+        name="search_financial_web",
+        description="联网搜索最新财务数据（营收、净利润等）。当本地SQL和API都查不到时使用。参数: query(搜索关键词, 如 '公司名 2026 一季度 营收')",
+        category=ToolCategory.DATA_COMPANY,
+        parameters={"query": "搜索关键词"},
+        func=on_demand_search
+    )

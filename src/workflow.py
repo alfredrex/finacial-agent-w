@@ -1,6 +1,7 @@
-from typing import Literal
+from typing import Literal, Optional
 import copy
 import asyncio
+import logging
 from langgraph.graph import StateGraph, END
 
 from src.state import AgentState, TaskType
@@ -20,6 +21,13 @@ from src.memory.user_memory import user_memory_manager
 from src.memory import memory_system, consolidator
 from src.communication import message_bus, agent_registry
 from src.communication.models import MessageType
+
+# 混合记忆系统
+from src.memory.kvstore_client import KvstoreClient
+from src.memory.hybrid_memory import HybridMemorySystem
+from src.memory.forgetting import ForgettingManager
+
+logger = logging.getLogger(__name__)
 
 
 register_all_tools()
@@ -63,6 +71,7 @@ async def dispatcher_node(state: AgentState) -> dict:
     
     file_paths = state.get("file_paths", [])
     if file_paths:
+        force_memory = state.get("needs_memory_retrieval", False)
         result = await dispatcher_agent.process(state)
         return {
             "selected_agent": "FileProcessingAgent",
@@ -94,7 +103,7 @@ async def dispatcher_node(state: AgentState) -> dict:
             "is_deep_qa": result.get("is_deep_qa", False),
             "needs_file_processing": True,
             "file_processing_done": False,
-            "needs_memory_retrieval": result.get("needs_memory_retrieval", False),
+            "needs_memory_retrieval": force_memory or result.get("needs_memory_retrieval", False),
             "memory_retrieval_done": False,
             "memory_context": [],
             "memory_sources": [],
@@ -102,7 +111,10 @@ async def dispatcher_node(state: AgentState) -> dict:
         }
 
     try:
+        # 保存 kvstore 强制标志 (dispatcher_agent.process() 会覆写 state)
+        force_memory = state.get("needs_memory_retrieval", False)
         result = await dispatcher_agent.process(state)
+        mem_flag = force_memory or result.get("needs_memory_retrieval", False)
         return {
             "selected_agent": result.get("selected_agent"),
             "current_agent": result.get("current_agent"),
@@ -133,7 +145,7 @@ async def dispatcher_node(state: AgentState) -> dict:
             "is_deep_qa": result.get("is_deep_qa", False),
             "needs_file_processing": result.get("needs_file_processing", False),
             "file_processing_done": False,
-            "needs_memory_retrieval": result.get("needs_memory_retrieval", False),
+            "needs_memory_retrieval": mem_flag,
             "memory_retrieval_done": False,
             "memory_context": [],
             "memory_sources": [],
@@ -188,11 +200,14 @@ async def coordinator_agent_node(state: AgentState) -> dict:
 async def memory_agent_node(state: AgentState) -> dict:
     snapshot_manager.save(state, "before_memory_agent", "workflow")
     try:
-        result = await memory_agent.process(state)
+        result = await asyncio.wait_for(memory_agent.process(state), timeout=30)
         return {
             "memory_context": result.get("memory_context", []),
             "memory_sources": result.get("memory_sources", []),
             "memory_retrieval_done": True,
+            "collected_data": result.get("collected_data", state.get("collected_data", [])),
+            "rag_context": result.get("rag_context", state.get("rag_context", [])),
+            "hybrid_memory": result.get("hybrid_memory", {}),
             "thought": result.get("thought"),
             "action": result.get("action"),
             "current_agent": result.get("current_agent"),
@@ -222,7 +237,7 @@ async def data_agent_node(state: AgentState) -> dict:
         is_finished = result.get("is_finished", False)
         data_collection_finished = result.get("data_collection_finished", is_finished)
         return {
-            "collected_data": result.get("collected_data", []),
+            "collected_data": state.get("collected_data", []) + result.get("collected_data", []),
             "answer": result.get("answer"),
             "is_finished": is_finished,
             "thought": result.get("thought"),
@@ -893,7 +908,75 @@ class MultiAgentSystem:
         _register_agents()
         consolidator.start()
 
-    async def run(self, query: str, file_paths: list = None, conversation_history: list = None) -> AgentState:
+        # ─── 混合记忆系统初始化 ───
+        self.kvstore_client: Optional[KvstoreClient] = None
+        self.hybrid_memory: Optional[HybridMemorySystem] = None
+        self.forgetting: Optional[ForgettingManager] = None
+        self._init_kvstore()
+
+    def _init_kvstore(self):
+        """初始化 kvstore 客户端和混合记忆系统。
+
+        如果 kvstore 不可用，降级为纯 ChromaDB 模式。
+        """
+        try:
+            self.kvstore_client = KvstoreClient(
+                host="127.0.0.1", port=2000, timeout=3, auto_reconnect=True
+            )
+            self.kvstore_client.connect()
+            if self.kvstore_client.ping():
+                logger.info("kvstore connected: 127.0.0.1:2000")
+
+                # 初始化 ChromaDB (L4) — 延迟加载，只在需要时初始化
+                chroma_store = None
+                try:
+                    from src.tools.rag_manager import rag_manager
+                    chroma_store = rag_manager.initialize_vectorstore()
+                    logger.info("ChromaDB vectorstore initialized for L4")
+                except Exception as e:
+                    logger.warning(f"ChromaDB init skipped ({e}), L4 disabled")
+
+                self.hybrid_memory = HybridMemorySystem(
+                    kvstore_client=self.kvstore_client,
+                    chroma_store=chroma_store,
+                    user_id="default",
+                )
+                self.forgetting = ForgettingManager(
+                    kvstore_client=self.kvstore_client,
+                    chroma_store=chroma_store,
+                )
+                # 注入 MemoryAgent
+                memory_agent.set_hybrid_memory(self.hybrid_memory)
+
+                # V1: 注入 SQL FactStore + Query Router
+                try:
+                    from src.storage.fact_store import FactStore
+                    from src.router.query_router import QueryRouter
+                    self.fact_store = FactStore()
+                    self.fact_store.init_db()
+                    self.fact_store.seed_metric_dictionary()
+                    self.query_router = QueryRouter(known_companies={
+                        "002594": "比亚迪",
+                        "600519": "贵州茅台",
+                        "000858": "五粮液",
+                        "300750": "宁德时代",
+                    })
+                    memory_agent.set_fact_store(self.fact_store, self.query_router)
+                    logger.info("SQL FactStore + Query Router injected into MemoryAgent")
+                except Exception as e:
+                    logger.warning(f"FactStore/QueryRouter init failed ({e})")
+                    self.fact_store = None
+                    self.query_router = None
+            else:
+                logger.warning("kvstore ping failed, using ChromaDB-only mode")
+                self.kvstore_client.close()
+                self.kvstore_client = None
+        except Exception as e:
+            logger.warning(f"kvstore init failed ({e}), using ChromaDB-only mode")
+            self.kvstore_client = None
+
+    async def run(self, query: str, file_paths: list = None,
+                 conversation_history: list = None, user_id: str = "default") -> AgentState:
         _register_agents()
         consolidator.start()
         memory_summary = user_memory_manager.get_memory_summary()
@@ -905,6 +988,10 @@ class MultiAgentSystem:
             "rewritten_query": None,
             "task_type": TaskType.QA,
             "file_paths": file_paths or [],
+            "user_id": user_id,
+            # kvstore 可用时强制 MemoryAgent 先检索
+            "needs_memory_retrieval": self.hybrid_memory is not None,
+            "memory_retrieval_done": self.hybrid_memory is None,
             "collected_data": [],
             "analysis_results": [],
             "rag_context": [],
@@ -976,16 +1063,28 @@ class MultiAgentSystem:
 
         return final_state
     
-    async def run_stream(self, query: str, file_paths: list = None, conversation_history: list = None):
+    async def run_stream(self, query: str, file_paths: list = None, conversation_history: list = None,
+                         user_id: str = "default"):
         _register_agents()
         consolidator.start()
-        memory_summary = user_memory_manager.get_memory_summary()
+        await user_memory_manager.add_memory(query)
+        # 优先使用 kvstore L2 用户画像，回退到旧的 JSON 用户记忆
+        if self.hybrid_memory:
+            self.hybrid_memory.user_id = user_id
+            l2_summary = self.hybrid_memory.l2.get_full_summary()
+            memory_summary = l2_summary if l2_summary else user_memory_manager.get_memory_summary()
+        else:
+            memory_summary = user_memory_manager.get_memory_summary()
 
         initial_state: AgentState = {
             "query": query,
             "rewritten_query": None,
             "task_type": TaskType.QA,
             "file_paths": file_paths or [],
+            "user_id": user_id,
+            # kvstore 可用时强制 MemoryAgent 先检索
+            "needs_memory_retrieval": self.hybrid_memory is not None,
+            "memory_retrieval_done": self.hybrid_memory is None,
             "collected_data": [],
             "analysis_results": [],
             "rag_context": [],
@@ -1043,18 +1142,39 @@ class MultiAgentSystem:
         }
         
         current_state = initial_state
-        
+
         async for event in self.app.astream(initial_state):
             for node_name, node_output in event.items():
                 if node_name == END:
+                    # 将交互存入长期记忆
+                    try:
+                        answer = current_state.get("answer", "") or current_state.get("report", "") or ""
+                        await memory_system.store(
+                            query=query,
+                            answer=answer[:500],
+                            state=dict(current_state),
+                        )
+                    except Exception:
+                        pass
                     yield "final", current_state
                     return
                 else:
                     if node_output:
                         current_state.update(node_output)
                     yield node_name, node_output
-        
+
         yield "final", current_state
+
+    def close(self):
+        """关闭混合记忆系统，清理 L1 数据。"""
+        if self.hybrid_memory:
+            self.hybrid_memory.close_session()
+        if self.kvstore_client:
+            self.kvstore_client.close()
+            self.kvstore_client = None
+        self.hybrid_memory = None
+        self.forgetting = None
+        logger.info("MultiAgentSystem closed, memory cleaned up")
 
 
 system = MultiAgentSystem()

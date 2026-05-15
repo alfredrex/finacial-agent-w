@@ -1,3 +1,4 @@
+import readline  # 提供标准行编辑（退格、方向键等）
 import asyncio
 import sys
 import os
@@ -212,7 +213,15 @@ class FinancialCLI:
                 return
             
             answer = final_state.get("answer") or final_state.get("report", "")
-            
+
+            # ─── 写入混合记忆 (L1 会话上下文 + L2 查询历史) ───
+            if hasattr(self.system, 'hybrid_memory') and self.system.hybrid_memory:
+                try:
+                    self.system.hybrid_memory.record_turn("user", query)
+                    self.system.hybrid_memory.record_turn("assistant", answer[:200])
+                except Exception:
+                    pass
+
             self.conversation_history.append({
                 "question": query,
                 "answer": answer
@@ -263,16 +272,29 @@ class FinancialCLI:
                 console.print("\n[yellow]未能生成有效回答[/yellow]")
             
             # 显示处理数据统计
-            collected_data = final_state.get("collected_data", {})
+            collected_data = final_state.get("collected_data", [])
             if collected_data:
                 console.print("\n[bold cyan]📦 收集的数据:[/bold cyan]")
-                for key, value in collected_data.items():
-                    if isinstance(value, list):
-                        console.print(f"  • {key}: {len(value)} 条")
-                    elif isinstance(value, dict):
-                        console.print(f"  • {key}: {len(value)} 个字段")
-                    else:
-                        console.print(f"  • {key}: 已获取")
+                if isinstance(collected_data, list):
+                    # 新的列表格式
+                    sources = set()
+                    for item in collected_data:
+                        if isinstance(item, dict):
+                            src = item.get("source") or item.get("data_source") or "未知"
+                            sources.add(src)
+                    for src in sorted(sources):
+                        count = sum(1 for item in collected_data
+                                   if isinstance(item, dict) and
+                                   (item.get("source") == src or item.get("data_source") == src))
+                        console.print(f"  • {src}: {count} 条")
+                elif isinstance(collected_data, dict):
+                    for key, value in collected_data.items():
+                        if isinstance(value, list):
+                            console.print(f"  • {key}: {len(value)} 条")
+                        elif isinstance(value, dict):
+                            console.print(f"  • {key}: {len(value)} 个字段")
+                        else:
+                            console.print(f"  • {key}: 已获取")
             
             # 显示分析结果
             analysis_results = final_state.get("analysis_results", [])
@@ -293,7 +315,7 @@ class FinancialCLI:
         
         while self.running:
             try:
-                user_input = Prompt.ask("\n[bold cyan]请输入问题[/bold cyan]").strip()
+                user_input = input("\n请输入问题: ").strip()
                 
                 if not user_input:
                     continue

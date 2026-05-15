@@ -34,6 +34,15 @@ class DataAgent(BaseAgent):
 - 新闻资讯：search_news
 - 公司信息：get_company_info（公司概况、主营业务等）, get_top_shareholders（十大股东）
 - 市场指数：get_market_index
+- 财务数据：get_financial_data（营收、净利润、现金流、ROE、毛利率等财报指标）
+  用法: get_financial_data(股票代码, all)  获取全部财务数据
+- 联网搜索：search_financial_web（当东方财富API查不到财报数据时，联网搜索）
+  用法: search_financial_web(公司名 Q1 营收 净利润)
+
+【数据获取优先级】:
+1. 优先: get_financial_data (东方财富/Sina/腾讯API，数据准确)
+2. 次选: MemoryAgent提供的SQL/ChromaDB数据 (从 collected_data 读取)
+3. 兜底: search_financial_web (联网搜索，当API都不可用时)
 
 输出格式:
 Thought: 分析已经有什么数据，是否还需要收集更多数据
@@ -188,8 +197,22 @@ NEED_MORE: AnalysisAgent
         state["need_more_agent"] = None
         state["need_user_input"] = None
         self._log_message(state, "开始数据采集任务...")
-        
+
         rag_context = state.get("rag_context", [])
+        collected_data = state.get("collected_data", [])
+        
+        # MemoryAgent 已注入 kvstore/ChromaDB 数据 → 跳过外部 API 调用
+        has_memory_data = any(
+            isinstance(d, dict) and d.get("data_source") == "chromadb_l4"
+            for d in (collected_data if isinstance(collected_data, list) else [])
+        )
+        if has_memory_data:
+            self._log_message(state, f"MemoryAgent 已提供 {len(collected_data)} 条数据，跳过外部采集")
+            state["is_finished"] = True
+            state["data_collection_finished"] = True
+            state["thought"] = "数据已由记忆系统提供，无需额外采集"
+            return state
+        
         if rag_context:
             self._log_message(state, f"向量库已有 {len(rag_context)} 条相关内容")
         

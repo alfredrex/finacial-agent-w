@@ -107,6 +107,8 @@ class FileInfo(TypedDict):
     file_type: str
     content: str
     chunks: List[str]
+    metrics: dict          # 结构化财务指标
+    metrics_pages: dict    # {metric_key: source_page}
 
 
 class AnalysisResult(TypedDict):

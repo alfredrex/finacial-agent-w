@@ -29,26 +29,32 @@ class MemorySystem:
     async def store(self, query: str, answer: str = "", thought_process: str = "",
                     entities: List[str] = None, state: dict = None):
         """将一次交互存储到所有相关记忆中"""
+        import asyncio
         entities = entities or []
+        loop = asyncio.get_event_loop()
         # 长期经验记忆
-        self.episodic.store(
-            query=query, answer=answer, thought_process=thought_process,
-            entities=entities, state=state,
+        await loop.run_in_executor(
+            None, self.episodic.store,
+            query, answer, thought_process, entities, state,
         )
         # 提取实体存入语义记忆
         sem_entities = self.semantic.extract_entities(query + " " + answer)
         if sem_entities:
             content = f"Q: {query}\nA: {answer}"
-            self.semantic.store_knowledge(content=content, entities=sem_entities)
+            await loop.run_in_executor(
+                None, self.semantic.store_knowledge, content, "", sem_entities,
+            )
 
     async def retrieve(self, query_text: str, limit: int = 5) -> Dict[str, List[MemorySearchResult]]:
         """从所有记忆中检索相关内容"""
+        import asyncio
         mq = MemoryQuery(query=query_text, limit=limit)
 
+        loop = asyncio.get_event_loop()
         results = {
             "working": self.working.retrieve(mq),
-            "episodic": self.episodic.retrieve(mq),
-            "semantic": self.semantic.retrieve(mq),
+            "episodic": await loop.run_in_executor(None, self.episodic.retrieve, mq),
+            "semantic": await loop.run_in_executor(None, self.semantic.retrieve, mq),
         }
 
         # 用户偏好

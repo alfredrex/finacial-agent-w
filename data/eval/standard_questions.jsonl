@@ -1,0 +1,50 @@
+{"id": "Q001", "question": "比亚迪2026Q1营业收入是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["revenue"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q002", "question": "比亚迪2026Q1净利润是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_profit"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q003", "question": "比亚迪2026Q1归母净利润是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_profit_parent"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q004", "question": "比亚迪2026Q1财务费用是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["financial_expense"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q005", "question": "比亚迪2026Q1经营活动现金流净额是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["operating_cash_flow"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q006", "question": "比亚迪2026Q1总资产是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["total_assets"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q007", "question": "比亚迪2026Q1总负债是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["total_liabilities"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q008", "question": "比亚迪2026Q1研发费用是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["rd_expense"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q009", "question": "比亚迪2026Q1销售费用是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["selling_expense"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q010", "question": "比亚迪2026Q1基本每股收益是多少？", "query_type": "metric_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["eps_basic"], "expected_source": "sql", "expected_unit": "元/股"}
+{"id": "Q011", "question": "比亚迪2026Q1营业收入同比增长多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["revenue"], "expected_source": "sql", "expected_unit": "%"}
+{"id": "Q012", "question": "比亚迪2026Q1归母净利润同比增长多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_profit_parent"], "expected_source": "sql", "expected_unit": "%"}
+{"id": "Q013", "question": "比亚迪2026Q1净利率是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_margin"], "expected_source": "computed", "expected_unit": "%"}
+{"id": "Q014", "question": "比亚迪2026Q1资产负债率是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["asset_liability_ratio"], "expected_source": "computed", "expected_unit": "%"}
+{"id": "Q015", "question": "比亚迪2026Q1毛利率是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["gross_margin"], "expected_source": "computed", "expected_unit": "%"}
+{"id": "Q016", "question": "比亚迪2026Q1研发费用率是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["rd_expense", "revenue"], "expected_source": "computed", "expected_unit": "%"}
+{"id": "Q017", "question": "比亚迪2026Q1财务费用占营业收入比例是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["financial_expense", "revenue"], "expected_source": "computed", "expected_unit": "%"}
+{"id": "Q018", "question": "比亚迪2026Q1经营现金流和净利润的比值是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["op_cf_to_np_ratio"], "expected_source": "computed", "expected_unit": "倍"}
+{"id": "Q019", "question": "比亚迪2026Q1总负债占总资产比例是多少？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["asset_liability_ratio"], "expected_source": "computed", "expected_unit": "%"}
+{"id": "Q020", "question": "比亚迪2026Q1归母净利润约等于多少亿元？", "query_type": "calculation_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_profit_parent"], "expected_source": "sql", "expected_unit": "元"}
+{"id": "Q021", "question": "对比比亚迪和贵州茅台2026Q1的营业收入", "query_type": "comparison_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["revenue"], "expected_source": "sql", "comparison": ["002594", "600519"]}
+{"id": "Q022", "question": "对比比亚迪和宁德时代2026Q1的归母净利润", "query_type": "comparison_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_profit_parent"], "expected_source": "sql", "comparison": ["002594", "300750"]}
+{"id": "Q023", "question": "哪家公司2026Q1研发费用更高，比亚迪还是宁德时代？", "query_type": "comparison_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["rd_expense"], "expected_source": "sql", "comparison": ["002594", "300750"]}
+{"id": "Q024", "question": "对比比亚迪、贵州茅台、五粮液2026Q1的净利率", "query_type": "comparison_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "metrics": ["net_margin"], "expected_source": "computed", "comparison": ["002594", "600519", "000858"]}
+{"id": "Q025", "question": "对比已入库公司2026Q1的资产负债率，谁最高？", "query_type": "comparison_query", "report_period": "2026Q1", "metrics": ["asset_liability_ratio"], "expected_source": "computed"}
+{"id": "Q026", "question": "从已入库公司中找出2026Q1营业收入最高的5家", "query_type": "comparison_query", "report_period": "2026Q1", "metrics": ["revenue"], "expected_source": "sql"}
+{"id": "Q027", "question": "从已入库公司中找出2026Q1归母净利润最高的5家", "query_type": "comparison_query", "report_period": "2026Q1", "metrics": ["net_profit_parent"], "expected_source": "sql"}
+{"id": "Q028", "question": "从已入库公司中找出2026Q1研发费用最高的5家", "query_type": "comparison_query", "report_period": "2026Q1", "metrics": ["rd_expense"], "expected_source": "sql"}
+{"id": "Q029", "question": "对比比亚迪近几个季度的营业收入趋势", "query_type": "comparison_query", "ticker": "002594", "company_name": "比亚迪", "metrics": ["revenue"], "expected_source": "sql"}
+{"id": "Q030", "question": "对比比亚迪近几个季度的经营现金流变化", "query_type": "comparison_query", "ticker": "002594", "company_name": "比亚迪", "metrics": ["operating_cash_flow"], "expected_source": "sql"}
+{"id": "Q031", "question": "比亚迪2026Q1净利润变化的原因是什么？", "query_type": "hybrid_analysis", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "expected_source": "sql+rag"}
+{"id": "Q032", "question": "比亚迪2026Q1经营现金流变化可能说明什么？", "query_type": "hybrid_analysis", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "expected_source": "sql+rag"}
+{"id": "Q033", "question": "比亚迪2026Q1管理层讨论了哪些经营重点？", "query_type": "document_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "expected_source": "rag"}
+{"id": "Q034", "question": "比亚迪2026Q1财报里提到了哪些主要风险？", "query_type": "document_query", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "expected_source": "rag"}
+{"id": "Q035", "question": "比亚迪2026Q1研发投入变化对公司有什么影响？", "query_type": "hybrid_analysis", "ticker": "002594", "company_name": "比亚迪", "report_period": "2026Q1", "expected_source": "sql+rag"}
+{"id": "Q036", "question": "为什么净利润增长不一定代表现金流也变好？", "query_type": "hybrid_analysis", "expected_source": "sql+rag"}
+{"id": "Q037", "question": "经营现金流和净利润背离时应该如何分析？", "query_type": "hybrid_analysis", "expected_source": "sql+rag"}
+{"id": "Q038", "question": "公司资产负债率上升可能意味着什么？", "query_type": "hybrid_analysis", "expected_source": "sql+rag"}
+{"id": "Q039", "question": "财务费用增加通常有哪些原因？", "query_type": "hybrid_analysis", "expected_source": "sql+rag"}
+{"id": "Q040", "question": "毛利率下降可能由哪些因素导致？", "query_type": "hybrid_analysis", "expected_source": "sql+rag"}
+{"id": "Q041", "question": "比亚迪今天股价是多少？", "query_type": "realtime_quote", "ticker": "002594", "company_name": "比亚迪", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q042", "question": "比亚迪最近有什么新闻？", "query_type": "latest_news", "ticker": "002594", "company_name": "比亚迪", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q043", "question": "比亚迪最近有没有新的公告？", "query_type": "latest_news", "ticker": "002594", "company_name": "比亚迪", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q044", "question": "最近新能源汽车行业有什么重要政策？", "query_type": "latest_news", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q045", "question": "今天A股市场整体表现如何？", "query_type": "latest_news", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q046", "question": "最近白酒行业有什么政策变化？", "query_type": "latest_news", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q047", "question": "宁德时代最近一周有什么重大新闻？", "query_type": "latest_news", "ticker": "300750", "company_name": "宁德时代", "expected_source": "web_api", "freshness_requirement": "latest"}
+{"id": "Q048", "question": "比亚迪最新发布的财报是哪一期？", "query_type": "latest_news", "ticker": "002594", "company_name": "比亚迪", "expected_source": "web_api+sql", "freshness_requirement": "recent"}
+{"id": "Q049", "question": "如果本地没有贵州茅台2026Q1财报，帮我查找并入库", "query_type": "hybrid_analysis", "ticker": "600519", "company_name": "贵州茅台", "report_period": "2026Q1", "expected_source": "web+sql"}
+{"id": "Q050", "question": "根据我的投资偏好，结合比亚迪最新财报和最近新闻，判断它是否值得继续关注", "query_type": "user_memory", "ticker": "002594", "company_name": "比亚迪", "expected_source": "kv+sql+rag+web", "freshness_requirement": "recent"}

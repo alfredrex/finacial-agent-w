@@ -90,7 +90,6 @@ class UserMemoryManager:
             self._memory_client = Memory()
             self._use_mem0 = True
         except Exception as e:
-            print(f"[INFO] mem0 初始化失败，使用本地存储: {e}")
             self._use_mem0 = False
     
     def _load_local_memory(self):
