@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 
+# ─── Trace Logger ─────────────────────────────────────
+from src.tracing import trace_logger
 
 logger = logging.getLogger(__name__)
 
@@ -222,13 +224,22 @@ class FactStore:
 
     def query_metric(self, ticker: str, report_period: str, metric_code: str) -> Optional[dict]:
         """精确查询: 某公司某报告期某个指标。"""
+        import time as _time
+        _start = _time.monotonic()
         with self._get_conn() as conn:
             row = conn.execute("""
                 SELECT * FROM financial_fact
                 WHERE ticker=? AND report_period=? AND metric_code=?
                 ORDER BY updated_at DESC LIMIT 1
             """, (ticker, report_period, metric_code)).fetchone()
-        return dict(row) if row else None
+        _lat = (_time.monotonic() - _start) * 1000
+        result = dict(row) if row else None
+        trace_logger.quick_span(
+            "sql:query_metric", latency_ms=_lat,
+            input_summary=f"{ticker}/{report_period}/{metric_code}",
+            output_summary="hit" if result else "miss",
+        )
+        return result
 
     def query_metrics_by_company_period(self, ticker: str, report_period: str,
                                          metric_codes: Optional[List[str]] = None) -> List[dict]:

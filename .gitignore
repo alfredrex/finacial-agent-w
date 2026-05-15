@@ -52,6 +52,9 @@ models/
 *.db-shm
 *.db-wal
 
+# Trace logs (运行时生成)
+logs/traces/
+
 # 测试和覆盖率
 .pytest_cache/
 .coverage

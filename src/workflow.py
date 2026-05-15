@@ -27,6 +27,9 @@ from src.memory.kvstore_client import KvstoreClient
 from src.memory.hybrid_memory import HybridMemorySystem
 from src.memory.forgetting import ForgettingManager
 
+# ─── Trace Logger ─────────────────────────────────────
+from src.tracing import start_trace, end_trace
+
 logger = logging.getLogger(__name__)
 
 
@@ -1076,6 +1079,9 @@ class MultiAgentSystem:
         else:
             memory_summary = user_memory_manager.get_memory_summary()
 
+        # ─── Trace: 请求级 trace 启动 ───
+        start_trace()
+
         initial_state: AgentState = {
             "query": query,
             "rewritten_query": None,
@@ -1156,6 +1162,8 @@ class MultiAgentSystem:
                         )
                     except Exception:
                         pass
+                    # ─── Trace: 请求结束 ───
+                    end_trace()
                     yield "final", current_state
                     return
                 else:
@@ -1163,6 +1171,8 @@ class MultiAgentSystem:
                         current_state.update(node_output)
                     yield node_name, node_output
 
+        # ─── Trace: 请求结束 ───
+        end_trace()
         yield "final", current_state
 
     def close(self):

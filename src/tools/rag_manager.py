@@ -8,6 +8,9 @@ from langchain_core.documents import Document
 from src.config import settings
 from src.tools.file_processor import FileInfo
 
+# ─── Trace Logger ─────────────────────────────────────
+from src.tracing import trace_logger
+
 
 class _BGELangChainWrapper:
     """将 BGEEmbedder 包装为 LangChain Embeddings 兼容接口。"""
@@ -62,8 +65,18 @@ class RAGManager:
         return len(texts)
 
     def similarity_search(self, query, k=4):
-        try: return self.initialize_vectorstore().similarity_search(query, k=k)
-        except: return []
+        import time as _time
+        _start = _time.monotonic()
+        try:
+            result = self.initialize_vectorstore().similarity_search(query, k=k)
+            _lat = (_time.monotonic() - _start) * 1000
+            trace_logger.quick_span("rag:search", latency_ms=_lat,
+                                    input_summary=query[:200],
+                                    output_summary=f"{len(result)} docs")
+            return result
+        except:
+            trace_logger.record_error("rag:search", "similarity_search failed")
+            return []
 
     def similarity_search_with_score(self, query, k=4):
         try: return self.initialize_vectorstore().similarity_search_with_score(query, k=k)

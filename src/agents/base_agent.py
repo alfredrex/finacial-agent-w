@@ -12,6 +12,9 @@ from src.config import settings
 from src.state import AgentState
 from src.tools.registry import ToolRegistry, ToolCategory
 
+# ─── Trace Logger ─────────────────────────────────────
+from src.tracing import trace_logger
+
 # 通信模块 (惰性导入，避免循环依赖)
 _communication = None
 _memory_system = None
@@ -456,14 +459,26 @@ Action: get_stock_realtime(600519)
                         defaults = {"symbol": "", "days": 30, "k": 4, "max_results": 10, "keyword": "", "query": ""}
                         if param_name in defaults:
                             mapped_params[param_name] = defaults[param_name]
-            
+
+            import time as _time
+            _tool_start = _time.monotonic()
             if asyncio.iscoroutinefunction(tool.func):
                 result = await tool.func(**mapped_params)
             else:
                 result = tool.func(**mapped_params)
+            _tool_latency = (_time.monotonic() - _tool_start) * 1000
+
+            # ─── Trace: tool span ───
+            trace_logger.quick_span(
+                "tool", latency_ms=_tool_latency,
+                input_summary=f"{tool_name}({str(mapped_params)[:150]})",
+                output_summary=str(result)[:200],
+            )
             
             return result
         except Exception as e:
+            # ─── Trace: tool error ───
+            trace_logger.record_error("tool", f"{tool_name}: {str(e)[:200]}")
             return f"工具执行错误: {str(e)}"
     
     async def execute_skill(self, skill_name: str, params: Dict[str, Any]) -> Any:
@@ -555,7 +570,10 @@ Action: get_stock_realtime(600519)
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                import time as _time
+                _llm_start = _time.monotonic()
                 response = await llm.ainvoke(messages)
+                _llm_latency = (_time.monotonic() - _llm_start) * 1000
                 self._update_token_usage(state, response)
                 
                 content = response.content
@@ -565,6 +583,13 @@ Action: get_stock_realtime(600519)
                 
                 thought = thought_match.group(1).strip() if thought_match else "分析中..."
                 action = action_match.group(1).strip() if action_match else "finish(继续)"
+
+                # ─── Trace: LLM span ───
+                trace_logger.quick_span(
+                    "llm", latency_ms=_llm_latency,
+                    input_summary=f"{self.name} iter {state.get('agent_iteration',0)}",
+                    output_summary=f"action={action[:100]}",
+                )
                 
                 return {
                     "thought": thought,

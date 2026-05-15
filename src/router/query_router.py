@@ -27,6 +27,9 @@ from typing import Optional, List, Dict, Tuple
 
 from .query_schema import QueryPlan, QueryType
 
+# ─── Trace Logger ─────────────────────────────────────
+from src.tracing import trace_logger
+
 logger = logging.getLogger(__name__)
 
 
@@ -166,6 +169,8 @@ class QueryRouter:
 
     def route(self, query: str, report_period: Optional[str] = None) -> QueryPlan:
         """分析用户问题并生成查询计划。"""
+        import time as _time
+        _start = _time.monotonic()
         plan = QueryPlan(original_query=query)
 
         # ── 提取实体/报告期/指标 ──
@@ -183,6 +188,12 @@ class QueryRouter:
             plan.query_type, ["web", "api", "sql", "rag"]
         )
 
+        _lat = (_time.monotonic() - _start) * 1000
+        trace_logger.quick_span(
+            "router", latency_ms=_lat,
+            input_summary=query[:200],
+            output_summary=f"type={plan.query_type}, ticker={plan.ticker}, metrics={plan.metrics[:3] if plan.metrics else 'none'}",
+        )
         return plan
 
     def _extract_entities(self, query: str, plan: QueryPlan) -> QueryPlan:
